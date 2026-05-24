@@ -1,0 +1,136 @@
+import { createClient } from '@/lib/supabase/server'
+import Header from '@/components/layout/Header'
+import { Users, Phone, FileText, AlertTriangle, CheckCircle, TrendingUp } from 'lucide-react'
+import Link from 'next/link'
+
+export default async function AdminDashboardPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const [
+    { data: agents },
+    { data: allCallbacks },
+    { data: allFollowups },
+    { data: allCustomers },
+  ] = await Promise.all([
+    supabase.from('profiles').select('*').eq('role', 'agent').eq('is_active', true),
+    supabase.from('callbacks').select('*, customers(name, phone), profiles!callbacks_agent_id_fkey(full_name)').order('scheduled_at', { ascending: true }),
+    supabase.from('followups').select('*, customers(name, phone), profiles!followups_agent_id_fkey(full_name)').order('created_at', { ascending: false }),
+    supabase.from('customers').select('id'),
+  ])
+
+  const pendingCallbacks = allCallbacks?.filter(c => c.status === 'pending') || []
+  const openFollowups = allFollowups?.filter(f => ['open', 'in_progress'].includes(f.status)) || []
+  const escalations = allFollowups?.filter(f => f.type === 'escalation') || []
+  const urgentItems = allFollowups?.filter(f => f.priority === 'urgent' && f.status !== 'resolved') || []
+
+  const stats = [
+    { label: 'Active Agents', value: agents?.length || 0, icon: Users, color: 'bg-blue-500', href: '/admin/agents' },
+    { label: 'Total Customers', value: allCustomers?.length || 0, icon: TrendingUp, color: 'bg-green-500', href: '#' },
+    { label: 'Pending Callbacks', value: pendingCallbacks.length, icon: Phone, color: 'bg-amber-500', href: '#' },
+    { label: 'Open Follow-ups', value: openFollowups.length, icon: FileText, color: 'bg-indigo-500', href: '#' },
+    { label: 'Escalations', value: escalations.length, icon: AlertTriangle, color: 'bg-red-500', href: '/admin/escalations' },
+    { label: 'Urgent Items', value: urgentItems.length, icon: AlertTriangle, color: 'bg-rose-600', href: '/admin/escalations' },
+  ]
+
+  return (
+    <div>
+      <Header title="Admin Dashboard" userId={user!.id} />
+      <div className="p-6 space-y-6">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          {stats.map(({ label, value, icon: Icon, color, href }) => (
+            <Link key={label} href={href} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-3">
+                <div className={`${color} rounded-lg p-2`}>
+                  <Icon className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-3xl font-bold text-gray-900">{value}</span>
+              </div>
+              <p className="text-sm text-gray-600 font-medium">{label}</p>
+            </Link>
+          ))}
+        </div>
+
+        {/* All agents workload */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <h2 className="font-semibold text-gray-900">Agent Workload</h2>
+            <Link href="/admin/agents" className="text-xs text-blue-600 hover:text-blue-800 font-medium">Manage agents</Link>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {agents?.map(agent => {
+              const agentCallbacks = pendingCallbacks.filter(c => c.agent_id === agent.id).length
+              const agentFollowups = openFollowups.filter(f => f.agent_id === agent.id).length
+              const agentEscalations = escalations.filter(f => f.agent_id === agent.id && ['open', 'in_progress'].includes(f.status)).length
+              return (
+                <div key={agent.id} className="px-5 py-3 flex items-center gap-4">
+                  <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-sm font-semibold text-white shrink-0">
+                    {agent.full_name.charAt(0)}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">{agent.full_name}</p>
+                    <p className="text-xs text-gray-500">{agent.email}</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="flex items-center gap-1 text-amber-600">
+                      <Phone className="w-3 h-3" />{agentCallbacks}
+                    </span>
+                    <span className="flex items-center gap-1 text-indigo-600">
+                      <FileText className="w-3 h-3" />{agentFollowups}
+                    </span>
+                    {agentEscalations > 0 && (
+                      <span className="flex items-center gap-1 text-red-600">
+                        <AlertTriangle className="w-3 h-3" />{agentEscalations}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Recent escalations */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+              Recent Escalations
+            </h2>
+            <Link href="/admin/escalations" className="text-xs text-blue-600 hover:text-blue-800 font-medium">Send escalation</Link>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {escalations.slice(0, 6).length === 0 ? (
+              <div className="px-5 py-8 text-center">
+                <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">No escalations</p>
+              </div>
+            ) : escalations.slice(0, 6).map(esc => (
+              <div key={esc.id} className="px-5 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{(esc.customers as any)?.name}</p>
+                    <p className="text-xs text-gray-500">Assigned to: {(esc.profiles as any)?.full_name}</p>
+                    <p className="text-xs text-gray-600 mt-0.5 line-clamp-1">{esc.query_description}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      esc.priority === 'urgent' ? 'bg-red-100 text-red-700' :
+                      esc.priority === 'high' ? 'bg-orange-100 text-orange-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>{esc.priority}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      esc.status === 'resolved' ? 'bg-green-100 text-green-700' :
+                      esc.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                      'bg-yellow-100 text-yellow-700'
+                    }`}>{esc.status}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
