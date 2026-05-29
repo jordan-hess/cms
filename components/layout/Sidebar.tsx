@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Users, Phone, FileText, ShieldAlert, LogOut, UserCog,
+  LayoutDashboard, Users, Phone, FileText, ShieldAlert, LogOut, UserCog, CalendarDays,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -14,10 +14,11 @@ interface SidebarProps {
 }
 
 const agentLinks = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/customers', label: 'Customers', icon: Users },
-  { href: '/callbacks', label: 'Callbacks', icon: Phone },
-  { href: '/followups', label: 'Follow-ups', icon: FileText },
+  { href: '/dashboard', label: 'Dashboard',   icon: LayoutDashboard },
+  { href: '/customers', label: 'Customers',   icon: Users           },
+  { href: '/callbacks', label: 'Callbacks',   icon: Phone           },
+  { href: '/followups', label: 'Follow-ups',  icon: FileText        },
+  { href: '/roster',    label: 'Team Roster', icon: CalendarDays    },
 ]
 
 const adminLinks = [

@@ -80,3 +80,97 @@ export interface Notification {
   sender?: Pick<Profile, 'full_name'>
   followups?: Pick<Followup, 'type' | 'status' | 'customer_id'>
 }
+
+// ─── Roster ──────────────────────────────────────────────────────────────────
+
+export type TeamColor = 'green' | 'blue' | 'red' | 'yellow'
+export type AttendanceStatus = 'on_shift' | 'late' | 'absent' | 'sick' | 'leave' | 'off'
+export type OverrideType = 'off' | 'swap_in' | 'extra_shift'
+export type CalendarView = 'month' | 'week' | 'day'
+
+export interface Team {
+  id: string
+  name: string
+  color: TeamColor
+  description: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamMember {
+  id: string
+  team_id: string
+  profile_id: string
+  joined_at: string
+  teams?: Pick<Team, 'id' | 'name' | 'color'>
+  profiles?: Pick<Profile, 'id' | 'full_name' | 'email' | 'is_active'>
+}
+
+export interface ShiftTemplate {
+  id: string
+  name: string
+  start_time: string   // 'HH:MM:SS' from Postgres
+  end_time: string
+  work_days: number[]  // ISO day-of-week: 1=Mon … 7=Sun
+  description: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamRotation {
+  id: string
+  team_id: string
+  shift_template_id: string
+  week_start_date: string   // 'YYYY-MM-DD', always a Monday
+  created_by: string
+  created_at: string
+  teams?: Pick<Team, 'id' | 'name' | 'color'>
+  shift_templates?: Pick<ShiftTemplate, 'id' | 'name' | 'start_time' | 'end_time' | 'work_days'>
+}
+
+export interface AttendanceRecord {
+  id: string
+  profile_id: string
+  date: string   // 'YYYY-MM-DD'
+  status: AttendanceStatus
+  notes: string | null
+  marked_by: string
+  marked_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface RosterOverride {
+  id: string
+  profile_id: string
+  date: string   // 'YYYY-MM-DD'
+  override_type: OverrideType
+  shift_template_id: string | null
+  notes: string | null
+  created_by: string
+  created_at: string
+  shift_templates?: Pick<ShiftTemplate, 'id' | 'name' | 'start_time' | 'end_time'> | null
+}
+
+/** Fully resolved shift state for one agent on one date — computed client-side */
+export interface ResolvedDaySlot {
+  profileId: string
+  date: string
+  isWorkDay: boolean
+  shiftTemplate: ShiftTemplate | null
+  overrideType: OverrideType | null
+  attendanceStatus: AttendanceStatus | null
+  effectiveStatus: AttendanceStatus | 'off' | 'no_rotation'
+}
+
+/** Shape passed from roster page.tsx → RosterManager */
+export interface RosterPageData {
+  profile: Profile
+  teams: (Team & { team_members: TeamMember[] })[]
+  allProfiles: Pick<Profile, 'id' | 'full_name' | 'email' | 'is_active'>[]
+  shiftTemplates: ShiftTemplate[]
+  rotations: TeamRotation[]
+  attendanceRecords: AttendanceRecord[]
+  overrides: RosterOverride[]
+  userTeam: Team | null
+}
