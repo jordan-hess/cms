@@ -4,15 +4,19 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Modal from '@/components/ui/Modal'
-import { Profile } from '@/types'
-import { Plus, UserCog, Shield, User, Mail, Loader2, CheckCircle, XCircle } from 'lucide-react'
+import { Profile, Team, TeamMember } from '@/types'
+import { Plus, Shield, User, Mail, Loader2, CheckCircle, XCircle, Users2 } from 'lucide-react'
+import AssignTeamModal from '@/components/roster/admin/AssignTeamModal'
+import { teamColorClasses } from '@/lib/roster/teamColors'
 
 interface Props {
   agents: Profile[]
   adminId: string
+  teams: Team[]
+  memberships: TeamMember[]
 }
 
-export default function AgentManager({ agents, adminId }: Props) {
+export default function AgentManager({ agents, adminId, teams, memberships }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [modal, setModal] = useState(false)
@@ -20,6 +24,12 @@ export default function AgentManager({ agents, adminId }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [assignTeamAgent, setAssignTeamAgent] = useState<{ id: string; full_name: string } | null>(null)
+
+  function agentTeam(profileId: string) {
+    const m = memberships.find(m => m.profile_id === profileId)
+    return m ? teams.find(t => t.id === m.team_id) ?? null : null
+  }
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
@@ -73,13 +83,24 @@ export default function AgentManager({ agents, adminId }: Props) {
               {agent.full_name.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <p className="font-medium text-gray-900">{agent.full_name}</p>
                 {agent.id === adminId && <span className="text-xs text-gray-400">(you)</span>}
                 <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
                   agent.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
                 }`}>{agent.role}</span>
                 {!agent.is_active && <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">inactive</span>}
+                {(() => {
+                  const team = agentTeam(agent.id)
+                  if (!team) return <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 font-medium">No team</span>
+                  const c = teamColorClasses[team.color]
+                  return (
+                    <span className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium ${c.lightBg} ${c.text}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                      {team.name}
+                    </span>
+                  )
+                })()}
               </div>
               <div className="flex items-center gap-1 mt-0.5">
                 <Mail className="w-3 h-3 text-gray-400" />
@@ -89,6 +110,13 @@ export default function AgentManager({ agents, adminId }: Props) {
             </div>
             {agent.id !== adminId && (
               <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setAssignTeamAgent({ id: agent.id, full_name: agent.full_name })}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-2 py-1 rounded-lg transition-colors"
+                  title="Assign to team"
+                >
+                  <Users2 className="w-3 h-3" /> Team
+                </button>
                 <button
                   onClick={() => changeRole(agent.id, agent.role === 'admin' ? 'agent' : 'admin')}
                   className="flex items-center gap-1 text-xs text-gray-500 hover:text-purple-600 border border-gray-200 hover:border-purple-300 px-2 py-1 rounded-lg transition-colors"
@@ -113,6 +141,17 @@ export default function AgentManager({ agents, adminId }: Props) {
           </div>
         ))}
       </div>
+
+      <AssignTeamModal
+        open={!!assignTeamAgent}
+        onClose={() => setAssignTeamAgent(null)}
+        onSuccess={() => { setAssignTeamAgent(null); router.refresh() }}
+        agents={agents}
+        teams={teams}
+        memberships={memberships}
+        preselectedProfileId={assignTeamAgent?.id}
+        preselectedName={assignTeamAgent?.full_name}
+      />
 
       <Modal open={modal} onClose={() => setModal(false)} title="Add Team Member">
         <form onSubmit={handleInvite} className="space-y-4">

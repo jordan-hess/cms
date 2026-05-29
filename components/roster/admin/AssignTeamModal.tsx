@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Modal from '@/components/ui/Modal'
 import { Team, TeamMember } from '@/types'
@@ -12,13 +12,19 @@ interface Props {
   agents: { id: string; full_name: string; email: string }[]
   teams: Team[]
   memberships: TeamMember[]
+  /** When provided the agent field is locked to this agent */
+  preselectedProfileId?: string
+  preselectedName?: string
 }
 
-export default function AssignTeamModal({ open, onClose, onSuccess, agents, teams, memberships }: Props) {
-  const [profileId, setProfileId] = useState('')
+export default function AssignTeamModal({ open, onClose, onSuccess, agents, teams, memberships, preselectedProfileId, preselectedName }: Props) {
+  const [profileId, setProfileId] = useState(preselectedProfileId ?? '')
   const [teamId, setTeamId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  // Sync when the modal opens for a different agent
+  useEffect(() => { setProfileId(preselectedProfileId ?? ''); setTeamId(''); setError('') }, [preselectedProfileId, open])
 
   const currentTeam = (id: string) => {
     const m = memberships.find(m => m.profile_id === id)
@@ -38,7 +44,7 @@ export default function AssignTeamModal({ open, onClose, onSuccess, agents, team
 
     setSaving(false)
     if (err) { setError(err.message); return }
-    setProfileId(''); setTeamId('')
+    setProfileId(preselectedProfileId ?? ''); setTeamId('')
     onSuccess()
     onClose()
   }
@@ -46,20 +52,27 @@ export default function AssignTeamModal({ open, onClose, onSuccess, agents, team
   return (
     <Modal open={open} onClose={onClose} title="Assign Agent to Team">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Agent</label>
-          <select
-            required
-            value={profileId}
-            onChange={e => setProfileId(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-          >
-            <option value="">Select agent…</option>
-            {agents.map(a => (
-              <option key={a.id} value={a.id}>{a.full_name} — currently: {currentTeam(a.id)}</option>
-            ))}
-          </select>
-        </div>
+        {preselectedProfileId ? (
+          <div className="px-3 py-2 bg-gray-50 rounded-lg">
+            <p className="text-sm font-medium text-gray-900">{preselectedName}</p>
+            <p className="text-xs text-gray-500">Currently: {currentTeam(preselectedProfileId)}</p>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Agent</label>
+            <select
+              required
+              value={profileId}
+              onChange={e => setProfileId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            >
+              <option value="">Select agent…</option>
+              {agents.map(a => (
+                <option key={a.id} value={a.id}>{a.full_name} — currently: {currentTeam(a.id)}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Team</label>
