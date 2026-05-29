@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Care CMS",
-  description: "Customer Care Agent Management System",
+  title: "Social CMS",
+  description: "Customer Care Management System",
 };
 
 export default function RootLayout({

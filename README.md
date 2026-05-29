@@ -2,6 +2,22 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+1. Add your real Supabase project values to `.env.local`.
+2. Apply the SQL in `supabase/schema.sql` to that project.
+3. Create the local dev users:
+
+```bash
+npm run setup:users
+```
+
+If that command fails with `Database error creating new user`, run `supabase/fix-auth-trigger.sql`
+in the Supabase SQL Editor first, then rerun the command.
+
+This provisions the following login details:
+
+- Admin: `admin@carecms.local` / `Admin123!`
+- Agent: `agent@carecms.local` / `Agent123!`
+
 First, run the development server:
 
 ```bash

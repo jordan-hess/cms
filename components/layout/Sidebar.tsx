@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Users, Phone, FileText, ShieldAlert, LogOut, HeadsetIcon, UserCog,
+  LayoutDashboard, Users, Phone, FileText, ShieldAlert, LogOut, UserCog,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -40,11 +40,13 @@ export default function Sidebar({ profile }: SidebarProps) {
   return (
     <div className="flex flex-col h-full w-64 bg-gray-900 text-white">
       <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-700">
-        <div className="bg-blue-500 rounded-lg p-1.5">
-          <HeadsetIcon className="w-5 h-5 text-white" />
-        </div>
+        <img
+          src="/logo.png"
+          alt="Social CMS logo"
+          className="w-8 h-8 rounded-lg object-cover"
+        />
         <div>
-          <p className="font-semibold text-sm">Care CMS</p>
+          <p className="font-semibold text-sm">Social CMS</p>
           <p className="text-xs text-gray-400 capitalize">{profile.role}</p>
         </div>
       </div>

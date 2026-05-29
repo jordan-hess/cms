@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
-import { HeadsetIcon, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -28,15 +29,14 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen relative flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
+      <div className="hero-shape absolute top-0 left-0 right-0" />
+      <div className="w-full max-w-md relative z-10">
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <div className="flex flex-col items-center mb-8">
-            <div className="bg-blue-600 rounded-2xl p-3 mb-4">
-              <HeadsetIcon className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-gray-900">Care CMS</h1>
-            <p className="text-sm text-gray-500 mt-1">Customer Care Management System</p>
+            <Image src="/logo.png" width={64} height={64} alt="Social CMS" className="mb-4" />
+            <h1 className="text-2xl font-bold text-gray-900">Social CMS</h1>
+            <p className="text-sm text-gray-500 mt-1">Social Care Management System</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-5">
