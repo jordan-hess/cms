@@ -4,9 +4,9 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Modal from '@/components/ui/Modal'
-import { Profile, Team, TeamMember } from '@/types'
-import { Plus, Shield, User, Mail, Loader2, CheckCircle, XCircle, Users2 } from 'lucide-react'
-import AssignTeamModal from '@/components/roster/admin/AssignTeamModal'
+import { Profile, Team, TeamMember, ShiftTemplate } from '@/types'
+import { Plus, Shield, User, Mail, Loader2, CheckCircle, XCircle, Clock } from 'lucide-react'
+import AssignShiftModal from '@/components/roster/admin/AssignShiftModal'
 import { teamColorClasses } from '@/lib/roster/teamColors'
 
 interface Props {
@@ -14,9 +14,10 @@ interface Props {
   adminId: string
   teams: Team[]
   memberships: TeamMember[]
+  shiftTemplates: ShiftTemplate[]
 }
 
-export default function AgentManager({ agents, adminId, teams, memberships }: Props) {
+export default function AgentManager({ agents, adminId, teams, memberships, shiftTemplates }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [modal, setModal] = useState(false)
@@ -24,7 +25,7 @@ export default function AgentManager({ agents, adminId, teams, memberships }: Pr
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [assignTeamAgent, setAssignTeamAgent] = useState<{ id: string; full_name: string } | null>(null)
+  const [assignShiftAgent, setAssignShiftAgent] = useState<{ id: string; full_name: string } | null>(null)
 
   function agentTeam(profileId: string) {
     const m = memberships.find(m => m.profile_id === profileId)
@@ -111,11 +112,11 @@ export default function AgentManager({ agents, adminId, teams, memberships }: Pr
             {agent.id !== adminId && (
               <div className="flex items-center gap-2 shrink-0">
                 <button
-                  onClick={() => setAssignTeamAgent({ id: agent.id, full_name: agent.full_name })}
+                  onClick={() => setAssignShiftAgent({ id: agent.id, full_name: agent.full_name })}
                   className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-2 py-1 rounded-lg transition-colors"
-                  title="Assign to team"
+                  title="Assign shift"
                 >
-                  <Users2 className="w-3 h-3" /> Team
+                  <Clock className="w-3 h-3" /> Assign Shift
                 </button>
                 <button
                   onClick={() => changeRole(agent.id, agent.role === 'admin' ? 'agent' : 'admin')}
@@ -142,15 +143,14 @@ export default function AgentManager({ agents, adminId, teams, memberships }: Pr
         ))}
       </div>
 
-      <AssignTeamModal
-        open={!!assignTeamAgent}
-        onClose={() => setAssignTeamAgent(null)}
-        onSuccess={() => { setAssignTeamAgent(null); router.refresh() }}
-        agents={agents}
-        teams={teams}
-        memberships={memberships}
-        preselectedProfileId={assignTeamAgent?.id}
-        preselectedName={assignTeamAgent?.full_name}
+      <AssignShiftModal
+        open={!!assignShiftAgent}
+        onClose={() => setAssignShiftAgent(null)}
+        onSuccess={() => { setAssignShiftAgent(null); router.refresh() }}
+        profileId={assignShiftAgent?.id ?? ''}
+        profileName={assignShiftAgent?.full_name ?? ''}
+        shiftTemplates={shiftTemplates}
+        currentUserId={adminId}
       />
 
       <Modal open={modal} onClose={() => setModal(false)} title="Add Team Member">
