@@ -27,29 +27,40 @@ export function resolveShift(
   const member = teamMembers.find(m => m.profile_id === profileId)
   if (!member) return { ...base, effectiveStatus: 'no_rotation' }
 
-  // 2. Find the rotation for the agent's team in the ISO week containing this date
+  // 2. Find all rotations for the agent's team in the ISO week containing this date.
+  //    A team can have multiple rotations per week (e.g. Morning Mon–Fri + Night Sat–Sun).
   const weekStart = formatDateKey(getISOWeekStart(date))
-  const rotation = rotations.find(
+  const weekRotations = rotations.filter(
     r => r.team_id === member.team_id && r.week_start_date === weekStart,
   )
-  if (!rotation || !rotation.shift_templates) return { ...base, effectiveStatus: 'no_rotation' }
+  if (weekRotations.length === 0) return { ...base, effectiveStatus: 'no_rotation' }
+
+  // 3. Pick the rotation whose shift template covers today's day-of-week.
+  const isoDow = getIsoDayOfWeek(date)
+  const rotation = weekRotations.find(r => {
+    const t = r.shift_templates as ShiftTemplate | undefined
+    return t && t.work_days.includes(isoDow)
+  })
+
+  // Team has rotations this week but none cover today → off day
+  if (!rotation || !rotation.shift_templates) {
+    return { ...base, effectiveStatus: 'off' }
+  }
 
   const template = rotation.shift_templates as ShiftTemplate
-  const isoDow = getIsoDayOfWeek(date)
-  const isWorkDay = template.work_days.includes(isoDow)
 
-  // 3. Check for a roster override
+  // 4. Check for a roster override
   const override = overrides.find(o => o.profile_id === profileId && o.date === dateStr)
   const overrideType = override ? (override.override_type as OverrideType) : null
 
-  // 4. Check for an attendance record (highest priority)
+  // 5. Check for an attendance record (highest priority)
   const attendance = attendanceRecords.find(a => a.profile_id === profileId && a.date === dateStr)
   const attendanceStatus = attendance ? (attendance.status as AttendanceStatus) : null
 
   if (attendanceStatus) {
     return {
       profileId, date: dateStr,
-      isWorkDay: overrideType === 'swap_in' || overrideType === 'extra_shift' ? true : isWorkDay,
+      isWorkDay: overrideType === 'swap_in' || overrideType === 'extra_shift' ? true : true,
       shiftTemplate: override?.shift_templates ? (override.shift_templates as unknown as ShiftTemplate) : template,
       overrideType,
       attendanceStatus,
@@ -57,12 +68,12 @@ export function resolveShift(
     }
   }
 
-  // 5. Override: forced off day
+  // 6. Override: forced off day
   if (overrideType === 'off') {
     return { ...base, isWorkDay: false, shiftTemplate: template, overrideType, attendanceStatus: null, effectiveStatus: 'off' }
   }
 
-  // 6. Override: swap_in or extra_shift — use override template, treat as work day
+  // 7. Override: swap_in or extra_shift — use override template, treat as work day
   if (overrideType === 'swap_in' || overrideType === 'extra_shift') {
     const overrideTemplate = override?.shift_templates
       ? (override.shift_templates as unknown as ShiftTemplate)
@@ -75,11 +86,6 @@ export function resolveShift(
       attendanceStatus: null,
       effectiveStatus: 'on_shift',
     }
-  }
-
-  // 7. Not a work day per template
-  if (!isWorkDay) {
-    return { ...base, isWorkDay: false, shiftTemplate: template, overrideType: null, attendanceStatus: null, effectiveStatus: 'off' }
   }
 
   // 8. Scheduled work day, no attendance record yet

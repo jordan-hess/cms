@@ -26,8 +26,9 @@ No test suite is configured.
 
 1. Run `supabase/schema.sql` in the Supabase SQL Editor.
 2. Run `supabase/fix-auth-trigger.sql` in the SQL Editor (repairs the auth trigger so user creation also creates a profile row — required before any users can be created).
-3. Copy `.env.local.example` → `.env.local` and fill in the three env vars.
-4. Run `npm run setup:users` to create `admin@carecms.local / Admin123!` and `agent@carecms.local / Agent123!`.
+3. Run `supabase/roster-schema.sql` in the SQL Editor (creates teams, shift_templates, team_rotations, team_members, attendance_records, roster_overrides tables and seeds the four default teams: Green, Blue, Red, Yellow).
+4. Copy `.env.local.example` → `.env.local` and fill in the three env vars.
+5. Run `npm run setup:users` to create `admin@carecms.local / Admin123!` and `agent@carecms.local / Agent123!`.
 
 ## Architecture
 
@@ -93,7 +94,9 @@ Role checks happen at three levels — all three must stay consistent:
 
 ### Database schema
 
-Tables: `profiles`, `customers`, `callbacks`, `followups`, `notifications`. Full definitions in `supabase/schema.sql`; TypeScript types in `types/index.ts`.
+Core tables: `profiles`, `customers`, `callbacks`, `followups`, `notifications` — defined in `supabase/schema.sql`.
+
+Roster tables: `teams`, `team_members`, `shift_templates`, `team_rotations`, `attendance_records`, `roster_overrides` — defined in `supabase/roster-schema.sql`; TypeScript types in `types/index.ts`.
 
 Foreign key joins use Supabase's inline select syntax:
 ```ts

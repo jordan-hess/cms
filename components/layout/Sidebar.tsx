@@ -3,11 +3,12 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Users, Phone, FileText, ShieldAlert, LogOut, UserCog, CalendarDays,
+  LayoutDashboard, Users, Phone, FileText, ShieldAlert, LogOut, UserCog, CalendarDays, Settings,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Profile } from '@/types'
+import ThemeToggle from '@/components/ui/ThemeToggle'
 
 interface SidebarProps {
   profile: Profile
@@ -40,7 +41,7 @@ export default function Sidebar({ profile }: SidebarProps) {
 
   return (
     <div className="flex flex-col h-full w-64 bg-gray-900 text-white">
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-700">
+      <div className="flex items-center gap-3 px-6 h-20 border-b border-gray-800">
         <img
           src="/logo.png"
           alt="Social CMS logo"
@@ -90,6 +91,15 @@ export default function Sidebar({ profile }: SidebarProps) {
           </>
         )}
       </nav>
+
+      <div className="px-3 pb-2 border-t border-gray-700">
+        <div className="pt-3 pb-1 px-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+            <Settings className="w-3 h-3" /> Preferences
+          </p>
+        </div>
+        <ThemeToggle />
+      </div>
 
       <div className="px-3 py-4 border-t border-gray-700">
         <div className="flex items-center gap-3 px-3 py-2 mb-1">

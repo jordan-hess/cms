@@ -105,19 +105,19 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => openModal('assignTeam')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             <Users2 className="w-4 h-4" /> Assign to Team
           </button>
           <button
             onClick={() => openModal('assignRotation')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             <RotateCcw className="w-4 h-4" /> Set Rotation
           </button>
           <button
             onClick={() => openModal('shiftTemplate')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             <Settings2 className="w-4 h-4" /> Shift Templates
           </button>
@@ -191,6 +191,7 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
             open={adminModal === 'shiftTemplate'}
             onClose={() => setAdminModal(null)}
             onSuccess={handleSuccess}
+            shiftTemplates={shiftTemplates}
           />
           <AssignRotationModal
             open={adminModal === 'assignRotation'}

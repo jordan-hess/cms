@@ -5,8 +5,10 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Modal from '@/components/ui/Modal'
 import { Profile, Team, TeamMember, ShiftTemplate } from '@/types'
-import { Plus, Shield, User, Mail, Loader2, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { Plus, Shield, User, Mail, Loader2, CheckCircle, XCircle, Clock, Users2 } from 'lucide-react'
 import AssignShiftModal from '@/components/roster/admin/AssignShiftModal'
+import AssignTeamModal from '@/components/roster/admin/AssignTeamModal'
+import ManageTeamsModal from '@/components/admin/ManageTeamsModal'
 import { teamColorClasses } from '@/lib/roster/teamColors'
 
 interface Props {
@@ -26,6 +28,8 @@ export default function AgentManager({ agents, adminId, teams, memberships, shif
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [assignShiftAgent, setAssignShiftAgent] = useState<{ id: string; full_name: string } | null>(null)
+  const [assignTeamAgent, setAssignTeamAgent] = useState<{ id: string; full_name: string } | null>(null)
+  const [teamsModal, setTeamsModal] = useState(false)
 
   function agentTeam(profileId: string) {
     const m = memberships.find(m => m.profile_id === profileId)
@@ -68,14 +72,22 @@ export default function AgentManager({ agents, adminId, teams, memberships, shif
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{agents.length} team members</p>
-        <button onClick={() => { setModal(true); setError(''); setSuccess('') }}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
-          <Plus className="w-4 h-4" /> Add Team Member
-        </button>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{agents.length} team members</p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setTeamsModal(true)}
+            className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 px-4 py-2.5 rounded-lg transition-colors"
+          >
+            <Users2 className="w-4 h-4" /> Manage Teams
+          </button>
+          <button onClick={() => { setModal(true); setError(''); setSuccess('') }}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+            <Plus className="w-4 h-4" /> Add Team Member
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 divide-y divide-gray-50 shadow-sm">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 divide-y divide-gray-50 dark:divide-gray-800 shadow-sm">
         {agents.map(agent => (
           <div key={agent.id} className="px-5 py-4 flex items-center gap-4">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 ${
@@ -85,7 +97,7 @@ export default function AgentManager({ agents, adminId, teams, memberships, shif
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <p className="font-medium text-gray-900">{agent.full_name}</p>
+                <p className="font-medium text-gray-900 dark:text-white">{agent.full_name}</p>
                 {agent.id === adminId && <span className="text-xs text-gray-400">(you)</span>}
                 <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
                   agent.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
@@ -105,12 +117,19 @@ export default function AgentManager({ agents, adminId, teams, memberships, shif
               </div>
               <div className="flex items-center gap-1 mt-0.5">
                 <Mail className="w-3 h-3 text-gray-400" />
-                <p className="text-xs text-gray-500">{agent.email}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{agent.email}</p>
                 {agent.department && <span className="text-xs text-gray-400">· {agent.department}</span>}
               </div>
             </div>
             {agent.id !== adminId && (
               <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setAssignTeamAgent({ id: agent.id, full_name: agent.full_name })}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-2 py-1 rounded-lg transition-colors"
+                  title="Assign team"
+                >
+                  <Users2 className="w-3 h-3" /> Assign Team
+                </button>
                 <button
                   onClick={() => setAssignShiftAgent({ id: agent.id, full_name: agent.full_name })}
                   className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-2 py-1 rounded-lg transition-colors"
@@ -153,29 +172,48 @@ export default function AgentManager({ agents, adminId, teams, memberships, shif
         currentUserId={adminId}
       />
 
+      <AssignTeamModal
+        open={!!assignTeamAgent}
+        onClose={() => setAssignTeamAgent(null)}
+        onSuccess={() => { setAssignTeamAgent(null); router.refresh() }}
+        agents={agents}
+        teams={teams}
+        memberships={memberships}
+        preselectedProfileId={assignTeamAgent?.id}
+        preselectedName={assignTeamAgent?.full_name}
+      />
+
+      <ManageTeamsModal
+        open={teamsModal}
+        onClose={() => setTeamsModal(false)}
+        onSuccess={() => { router.refresh() }}
+        teams={teams}
+        memberships={memberships}
+      />
+
       <Modal open={modal} onClose={() => setModal(false)} title="Add Team Member">
         <form onSubmit={handleInvite} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full Name *</label>
             <input required value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
             <input required type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
             <input required type="password" minLength={8} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               placeholder="Min 8 characters" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
               <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white">
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
                 <option value="agent">Agent</option>
                 <option value="admin">Admin</option>
               </select>
@@ -183,7 +221,7 @@ export default function AgentManager({ agents, adminId, teams, memberships, shif
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
               <input value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 placeholder="e.g. Sales" />
             </div>
           </div>

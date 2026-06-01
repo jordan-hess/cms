@@ -16,7 +16,6 @@ interface MonthViewProps {
 export default function MonthView({ year, month, teams, allProfiles, slotMap, onCellClick }: MonthViewProps) {
   const days = getMonthGridDays(year, month)
 
-  // Build a quick lookup: profileId → teamColor
   const profileTeam = new Map<string, Team>()
   for (const team of teams) {
     for (const member of team.team_members) {
@@ -27,24 +26,21 @@ export default function MonthView({ year, month, teams, allProfiles, slotMap, on
   const activeProfiles = allProfiles.filter(p => p.is_active)
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-      {/* Day-of-week header */}
-      <div className="grid grid-cols-7 border-b border-gray-100">
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+      <div className="grid grid-cols-7 border-b border-gray-100 dark:border-gray-800">
         {DAY_LABELS.map(d => (
-          <div key={d} className="px-2 py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <div key={d} className="px-2 py-2 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
             {d}
           </div>
         ))}
       </div>
 
-      {/* 6-row grid */}
-      <div className="grid grid-cols-7 divide-x divide-y divide-gray-100">
+      <div className="grid grid-cols-7 divide-x divide-y divide-gray-100 dark:divide-gray-800">
         {days.map((day, idx) => {
           const dateStr = formatDateKey(day)
           const inMonth = isSameMonth(day, year, month)
           const today = isToday(day)
 
-          // Collect slots for active profiles on this day
           const daySlots = activeProfiles
             .map(p => ({
               profile: p,
@@ -59,12 +55,12 @@ export default function MonthView({ year, month, teams, allProfiles, slotMap, on
           return (
             <div
               key={idx}
-              className={`min-h-[100px] p-1.5 ${inMonth ? 'bg-white' : 'bg-gray-50'}`}
+              className={`min-h-[100px] p-1.5 ${inMonth ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-950'}`}
             >
               <div className={`text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${
                 today
                   ? 'bg-blue-600 text-white'
-                  : inMonth ? 'text-gray-700' : 'text-gray-300'
+                  : inMonth ? 'text-gray-700 dark:text-gray-300' : 'text-gray-300 dark:text-gray-600'
               }`}>
                 {day.getDate()}
               </div>
@@ -82,7 +78,7 @@ export default function MonthView({ year, month, teams, allProfiles, slotMap, on
                   ) : null
                 )}
                 {overflow > 0 && (
-                  <p className="text-xs text-gray-400 pl-1">+{overflow} more</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 pl-1">+{overflow} more</p>
                 )}
               </div>
             </div>

@@ -37,30 +37,30 @@ export default function CalendarHeader({ view, currentDate, onViewChange, onNavi
       <div className="flex items-center gap-2">
         <button
           onClick={() => onNavigate(-1)}
-          className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+          className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors"
           aria-label="Previous"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
         <button
           onClick={onToday}
-          className="px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
         >
           Today
         </button>
         <button
           onClick={() => onNavigate(1)}
-          className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+          className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors"
           aria-label="Next"
         >
           <ChevronRight className="w-4 h-4" />
         </button>
-        <h2 className="text-base font-semibold text-gray-900 ml-1">
+        <h2 className="text-base font-semibold text-gray-900 dark:text-white ml-1">
           {formatLabel(view, currentDate)}
         </h2>
       </div>
 
-      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+      <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
         {VIEWS.map(({ value, label }) => (
           <button
             key={value}
@@ -68,7 +68,7 @@ export default function CalendarHeader({ view, currentDate, onViewChange, onNavi
             className={`px-3 py-1.5 text-sm font-medium transition-colors ${
               view === value
                 ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-50'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
             }`}
           >
             {label}

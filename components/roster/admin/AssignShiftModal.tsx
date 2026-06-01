@@ -107,7 +107,7 @@ export default function AssignShiftModal({ open, onClose, onSuccess, profileId, 
             required
             value={templateId}
             onChange={e => setTemplateId(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
           >
             <option value="">Select shift…</option>
             {shiftTemplates.map(t => (

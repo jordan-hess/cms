@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!profile) redirect('/login')
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-950 overflow-hidden">
       <Sidebar profile={profile as Profile} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <main className="flex-1 overflow-y-auto">
