@@ -39,7 +39,7 @@ export default function DayView({ currentDate, teams, allProfiles, slotMap, isAd
               {profiles.map(profile => {
                 const slot = slotMap.get(`${profile.id}:${dateStr}`)
                 const sc = slot ? (statusColorClasses[slot.effectiveStatus] ?? statusColorClasses.off) : statusColorClasses.off
-                const initials = profile.full_name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
+                const initials = team.name.slice(0, 2).toUpperCase()
 
                 return (
                   <div key={profile.id} className="flex items-center gap-4 px-5 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
@@ -48,7 +48,7 @@ export default function DayView({ currentDate, teams, allProfiles, slotMap, isAd
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{profile.full_name}</p>
+                      <p className={`text-sm font-semibold ${colors.text}`}>{team.name}</p>
                       {slot?.shiftTemplate && slot.isWorkDay && (
                         <p className="text-xs text-gray-400 dark:text-gray-500">
                           {formatShiftTime(slot.shiftTemplate.start_time)} – {formatShiftTime(slot.shiftTemplate.end_time)}

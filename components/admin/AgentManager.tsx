@@ -87,7 +87,7 @@ export default function AgentManager({ agents, adminId, teams, memberships, shif
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 divide-y divide-gray-50 dark:divide-gray-800 shadow-sm">
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800 shadow-sm">
         {agents.map(agent => (
           <div key={agent.id} className="px-5 py-4 flex items-center gap-4">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 ${
@@ -100,12 +100,12 @@ export default function AgentManager({ agents, adminId, teams, memberships, shif
                 <p className="font-medium text-gray-900 dark:text-white">{agent.full_name}</p>
                 {agent.id === adminId && <span className="text-xs text-gray-400">(you)</span>}
                 <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                  agent.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                  agent.role === 'admin' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
                 }`}>{agent.role}</span>
-                {!agent.is_active && <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">inactive</span>}
+                {!agent.is_active && <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">inactive</span>}
                 {(() => {
                   const team = agentTeam(agent.id)
-                  if (!team) return <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 font-medium">No team</span>
+                  if (!team) return <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 font-medium">No team</span>
                   const c = teamColorClasses[team.color]
                   return (
                     <span className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-medium ${c.lightBg} ${c.text}`}>
@@ -125,21 +125,21 @@ export default function AgentManager({ agents, adminId, teams, memberships, shif
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   onClick={() => setAssignTeamAgent({ id: agent.id, full_name: agent.full_name })}
-                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-2 py-1 rounded-lg transition-colors"
+                  className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 border border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500 px-2 py-1 rounded-lg transition-colors"
                   title="Assign team"
                 >
                   <Users2 className="w-3 h-3" /> Assign Team
                 </button>
                 <button
                   onClick={() => setAssignShiftAgent({ id: agent.id, full_name: agent.full_name })}
-                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-2 py-1 rounded-lg transition-colors"
+                  className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 border border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500 px-2 py-1 rounded-lg transition-colors"
                   title="Assign shift"
                 >
                   <Clock className="w-3 h-3" /> Assign Shift
                 </button>
                 <button
                   onClick={() => changeRole(agent.id, agent.role === 'admin' ? 'agent' : 'admin')}
-                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-purple-600 border border-gray-200 hover:border-purple-300 px-2 py-1 rounded-lg transition-colors"
+                  className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 border border-gray-200 dark:border-gray-600 hover:border-purple-300 dark:hover:border-purple-500 px-2 py-1 rounded-lg transition-colors"
                   title={agent.role === 'admin' ? 'Demote to agent' : 'Promote to admin'}
                 >
                   {agent.role === 'admin' ? <User className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
@@ -149,8 +149,8 @@ export default function AgentManager({ agents, adminId, teams, memberships, shif
                   onClick={() => toggleActive(agent)}
                   className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg border transition-colors ${
                     agent.is_active
-                      ? 'text-gray-500 hover:text-red-600 border-gray-200 hover:border-red-300'
-                      : 'text-gray-500 hover:text-green-600 border-gray-200 hover:border-green-300'
+                      ? 'text-gray-500 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 border-gray-200 dark:border-gray-600 hover:border-red-300 dark:hover:border-red-500'
+                      : 'text-gray-500 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400 border-gray-200 dark:border-gray-600 hover:border-green-300 dark:hover:border-green-500'
                   }`}
                 >
                   {agent.is_active ? <XCircle className="w-3 h-3" /> : <CheckCircle className="w-3 h-3" />}

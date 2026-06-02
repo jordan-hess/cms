@@ -70,7 +70,7 @@ export default function MonthView({ year, month, teams, allProfiles, slotMap, on
                     <AgentDayCell
                       key={profile.id}
                       slot={slot}
-                      name={profile.full_name}
+                      name={team.name}
                       teamColor={team.color}
                       compact
                       onClick={() => onCellClick(profile.id, dateStr)}

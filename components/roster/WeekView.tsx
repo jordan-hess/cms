@@ -61,9 +61,9 @@ export default function WeekView({ currentDate, teams, allProfiles, slotMap, isA
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold text-white flex-shrink-0 ${teamColorClasses[team.color].bg}`}>
-                        {profile.full_name.charAt(0)}
+                        {team.name.charAt(0)}
                       </div>
-                      <span className="text-xs font-medium text-gray-900 dark:text-white truncate">{profile.full_name}</span>
+                      <span className={`text-xs font-medium truncate ${teamColorClasses[team.color].text}`}>{team.name}</span>
                     </div>
                   </td>
                   {weekDays.map(day => {
