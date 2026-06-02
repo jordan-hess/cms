@@ -39,25 +39,25 @@ export default async function AdminDashboardPage() {
       <div className="p-6 space-y-6">
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {stats.map(({ label, value, icon: Icon, color, href }) => (
-            <Link key={label} href={href} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <Link key={label} href={href} className="bg-white dark:bg-gray-900 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
                 <div className={`${color} rounded-lg p-2`}>
                   <Icon className="w-5 h-5 text-white" />
                 </div>
-                <span className="text-3xl font-bold text-gray-900">{value}</span>
+                <span className="text-3xl font-bold text-gray-900 dark:text-white">{value}</span>
               </div>
-              <p className="text-sm text-gray-600 font-medium">{label}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">{label}</p>
             </Link>
           ))}
         </div>
 
         {/* All agents workload */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900">Agent Workload</h2>
-            <Link href="/admin/agents" className="text-xs text-blue-600 hover:text-blue-800 font-medium">Manage agents</Link>
+        <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+            <h2 className="font-semibold text-gray-900 dark:text-white">Agent Workload</h2>
+            <Link href="/admin/agents" className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium">Manage agents</Link>
           </div>
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-gray-50 dark:divide-gray-800">
             {agents?.map(agent => {
               const agentCallbacks = pendingCallbacks.filter(c => c.agent_id === agent.id).length
               const agentFollowups = openFollowups.filter(f => f.agent_id === agent.id).length
@@ -68,8 +68,8 @@ export default async function AdminDashboardPage() {
                     {agent.full_name.charAt(0)}
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{agent.full_name}</p>
-                    <p className="text-xs text-gray-500">{agent.email}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{agent.full_name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{agent.email}</p>
                   </div>
                   <div className="flex items-center gap-3 text-xs">
                     <span className="flex items-center gap-1 text-amber-600">
@@ -91,27 +91,27 @@ export default async function AdminDashboardPage() {
         </div>
 
         {/* Recent escalations */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+        <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+            <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-red-500" />
               Recent Escalations
             </h2>
-            <Link href="/admin/escalations" className="text-xs text-blue-600 hover:text-blue-800 font-medium">Send escalation</Link>
+            <Link href="/admin/escalations" className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium">Send escalation</Link>
           </div>
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-gray-50 dark:divide-gray-800">
             {escalations.slice(0, 6).length === 0 ? (
               <div className="px-5 py-8 text-center">
                 <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">No escalations</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">No escalations</p>
               </div>
             ) : escalations.slice(0, 6).map(esc => (
               <div key={esc.id} className="px-5 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{(esc.customers as any)?.name}</p>
-                    <p className="text-xs text-gray-500">Assigned to: {(esc.profiles as any)?.full_name}</p>
-                    <p className="text-xs text-gray-600 mt-0.5 line-clamp-1">{esc.query_description}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{(esc.customers as any)?.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Assigned to: {(esc.profiles as any)?.full_name}</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 line-clamp-1">{esc.query_description}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${

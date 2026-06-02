@@ -1,6 +1,6 @@
 import { Team, TeamMember, ResolvedDaySlot } from '@/types'
 import { getMonthGridDays, formatDateKey, isSameMonth, isToday } from '@/lib/roster/calendarUtils'
-import AgentDayCell from './AgentDayCell'
+import { teamColorClasses } from '@/lib/roster/teamColors'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -41,16 +41,15 @@ export default function MonthView({ year, month, teams, allProfiles, slotMap, on
           const inMonth = isSameMonth(day, year, month)
           const today = isToday(day)
 
-          const daySlots = activeProfiles
-            .map(p => ({
-              profile: p,
-              team: profileTeam.get(p.id),
-              slot: slotMap.get(`${p.id}:${dateStr}`),
-            }))
-            .filter(({ slot }) => slot && slot.effectiveStatus !== 'no_rotation' && slot.isWorkDay)
-
-          const visibleSlots = daySlots.slice(0, 4)
-          const overflow = daySlots.length - visibleSlots.length
+          const teamsOnShift = new Map<string, { team: Team; firstProfileId: string }>()
+          for (const p of activeProfiles) {
+            const team = profileTeam.get(p.id)
+            const slot = slotMap.get(`${p.id}:${dateStr}`)
+            if (team && slot && slot.effectiveStatus !== 'no_rotation' && slot.isWorkDay && !teamsOnShift.has(team.id)) {
+              teamsOnShift.set(team.id, { team, firstProfileId: p.id })
+            }
+          }
+          const teamChips = [...teamsOnShift.values()]
 
           return (
             <div
@@ -65,21 +64,16 @@ export default function MonthView({ year, month, teams, allProfiles, slotMap, on
                 {day.getDate()}
               </div>
               <div className="space-y-0.5">
-                {visibleSlots.map(({ profile, team, slot }) =>
-                  slot && team ? (
-                    <AgentDayCell
-                      key={profile.id}
-                      slot={slot}
-                      name={team.name}
-                      teamColor={team.color}
-                      compact
-                      onClick={() => onCellClick(profile.id, dateStr)}
-                    />
-                  ) : null
-                )}
-                {overflow > 0 && (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 pl-1">+{overflow} more</p>
-                )}
+                {teamChips.map(({ team, firstProfileId }) => (
+                  <button
+                    key={team.id}
+                    onClick={() => onCellClick(firstProfileId, dateStr)}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs w-full text-left transition-opacity hover:opacity-80 ${teamColorClasses[team.color].lightBg}`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${teamColorClasses[team.color].dot}`} />
+                    <span className={`truncate font-medium ${teamColorClasses[team.color].text}`}>{team.name}</span>
+                  </button>
+                ))}
               </div>
             </div>
           )
