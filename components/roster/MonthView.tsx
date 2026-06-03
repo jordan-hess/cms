@@ -11,9 +11,10 @@ interface MonthViewProps {
   allProfiles: { id: string; full_name: string; is_active: boolean }[]
   slotMap: Map<string, ResolvedDaySlot>
   onCellClick: (profileId: string, date: string) => void
+  pendingLeaveMap?: Map<string, string[]>
 }
 
-export default function MonthView({ year, month, teams, allProfiles, slotMap, onCellClick }: MonthViewProps) {
+export default function MonthView({ year, month, teams, allProfiles, slotMap, onCellClick, pendingLeaveMap }: MonthViewProps) {
   const days = getMonthGridDays(year, month)
 
   const profileTeam = new Map<string, Team>()
@@ -50,18 +51,24 @@ export default function MonthView({ year, month, teams, allProfiles, slotMap, on
             }
           }
           const teamChips = [...teamsOnShift.values()]
+          const hasPendingLeave = pendingLeaveMap && (pendingLeaveMap.get(dateStr)?.length ?? 0) > 0
 
           return (
             <div
               key={idx}
               className={`min-h-[100px] p-1.5 ${inMonth ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-950'}`}
             >
-              <div className={`text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${
-                today
-                  ? 'bg-blue-600 text-white'
-                  : inMonth ? 'text-gray-700 dark:text-gray-300' : 'text-gray-300 dark:text-gray-600'
-              }`}>
-                {day.getDate()}
+              <div className="flex items-start justify-between mb-1">
+                <div className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full ${
+                  today
+                    ? 'bg-blue-600 text-white'
+                    : inMonth ? 'text-gray-700 dark:text-gray-300' : 'text-gray-300 dark:text-gray-600'
+                }`}>
+                  {day.getDate()}
+                </div>
+                {hasPendingLeave && (
+                  <span title="Pending leave requests" className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0 mt-1" />
+                )}
               </div>
               <div className="space-y-0.5">
                 {teamChips.map(({ team, firstProfileId }) => (

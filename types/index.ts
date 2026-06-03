@@ -173,4 +173,63 @@ export interface RosterPageData {
   attendanceRecords: AttendanceRecord[]
   overrides: RosterOverride[]
   userTeam: Team | null
+  myRequests?: RequestWithDetail[]
+  pendingRequests?: RequestWithDetail[]
+}
+
+// ─── Requests ─────────────────────────────────────────────────────────────────
+
+export type RequestStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'changes_requested'
+export type RequestType = 'leave' | 'overtime'
+export type LeaveType = 'annual' | 'sick' | 'family_responsibility' | 'unpaid' | 'other'
+export type ShiftType = 'day' | 'night' | 'evening'
+
+export interface Request {
+  id: string
+  profile_id: string
+  team_id: string | null
+  type: RequestType
+  status: RequestStatus
+  admin_comment: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  created_at: string
+  updated_at: string
+  profiles?: Pick<Profile, 'id' | 'full_name' | 'email'>
+  teams?: Pick<Team, 'id' | 'name' | 'color'> | null
+  reviewer?: Pick<Profile, 'full_name'> | null
+}
+
+export interface LeaveRequest {
+  id: string
+  request_id: string
+  leave_type: LeaveType
+  dates: string[]
+  notes: string | null
+}
+
+export interface OvertimeRequest {
+  id: string
+  request_id: string
+  month: number
+  year: number
+  notes: string | null
+  overtime_entries?: OvertimeEntry[]
+}
+
+export interface OvertimeEntry {
+  id: string
+  overtime_request_id: string
+  date: string
+  shift: ShiftType
+  ot_1_5: number
+  ot_2_0: number
+  night_hours: number
+  sort_order: number
+}
+
+/** A request with its type-specific detail joined in */
+export interface RequestWithDetail extends Request {
+  leave_requests?: LeaveRequest[]
+  overtime_requests?: (OvertimeRequest & { overtime_entries?: OvertimeEntry[] })[]
 }

@@ -18,7 +18,8 @@ import ShiftTemplateModal from './admin/ShiftTemplateModal'
 import AssignRotationModal from './admin/AssignRotationModal'
 import MarkAttendanceModal from './admin/MarkAttendanceModal'
 import RosterOverrideModal from './admin/RosterOverrideModal'
-import { Settings2, RotateCcw, Users2, CalendarPlus } from 'lucide-react'
+import RequestsPanel from '@/components/requests/RequestsPanel'
+import { Settings2, RotateCcw, Users2, CalendarPlus, Inbox } from 'lucide-react'
 
 type AdminModal = 'assignTeam' | 'shiftTemplate' | 'assignRotation' | 'markAttendance' | 'rosterOverride' | null
 
@@ -30,13 +31,16 @@ interface ModalContext {
 
 export default function RosterManager({ data }: { data: RosterPageData }) {
   const router = useRouter()
-  const { profile, teams, allProfiles, shiftTemplates, rotations, attendanceRecords, overrides } = data
+  const { profile, teams, allProfiles, shiftTemplates, rotations, attendanceRecords, overrides, userTeam, myRequests, pendingRequests } = data
   const isAdmin = profile.role === 'admin'
 
   const [view, setView] = useState<CalendarView>('month')
   const [currentDate, setCurrentDate] = useState(new Date())
   const [adminModal, setAdminModal] = useState<AdminModal>(null)
   const [modalCtx, setModalCtx] = useState<ModalContext>({})
+  const [requestsPanelOpen, setRequestsPanelOpen] = useState(false)
+
+  const pendingCount = pendingRequests?.filter(r => r.status === 'pending').length ?? 0
 
   // Build all team_members from the nested teams structure
   const allMembers: TeamMember[] = useMemo(() =>
@@ -56,6 +60,23 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
   const slotMap = useMemo(() =>
     buildSlotMap(allProfiles, visibleDates, allMembers, rotations as TeamRotation[], attendanceRecords, overrides),
     [allProfiles, visibleDates, allMembers, rotations, attendanceRecords, overrides])
+
+  // Build pending leave map for admin calendar indicators
+  const pendingLeaveMap = useMemo((): Map<string, string[]> => {
+    if (!isAdmin || !pendingRequests) return new Map()
+    const map = new Map<string, string[]>()
+    for (const req of pendingRequests) {
+      if (req.type !== 'leave' || req.status !== 'pending') continue
+      const leaveDetail = req.leave_requests?.[0]
+      if (!leaveDetail) continue
+      for (const d of leaveDetail.dates) {
+        const existing = map.get(d) ?? []
+        existing.push(req.profile_id)
+        map.set(d, existing)
+      }
+    }
+    return map
+  }, [isAdmin, pendingRequests])
 
   function navigate(dir: -1 | 1) {
     setCurrentDate(prev => {
@@ -100,37 +121,53 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
 
   return (
     <div className="space-y-4">
-      {/* Admin toolbar */}
-      {isAdmin && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => openModal('assignTeam')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-          >
-            <Users2 className="w-4 h-4" /> Assign to Team
-          </button>
-          <button
-            onClick={() => openModal('assignRotation')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-          >
-            <RotateCcw className="w-4 h-4" /> Set Rotation
-          </button>
-          <button
-            onClick={() => openModal('shiftTemplate')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-          >
-            <Settings2 className="w-4 h-4" /> Shift Templates
-          </button>
-          {view === 'day' && (
+      {/* Toolbar */}
+      <div className="flex flex-wrap gap-2 items-center">
+        {isAdmin && (
+          <>
             <button
-              onClick={() => openModal('markAttendance', { date: formatDateKey(currentDate) })}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors ml-auto"
+              onClick={() => openModal('assignTeam')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
-              <CalendarPlus className="w-4 h-4" /> Mark Attendance
+              <Users2 className="w-4 h-4" /> Assign to Team
             </button>
+            <button
+              onClick={() => openModal('assignRotation')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" /> Set Rotation
+            </button>
+            <button
+              onClick={() => openModal('shiftTemplate')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <Settings2 className="w-4 h-4" /> Shift Templates
+            </button>
+            {view === 'day' && (
+              <button
+                onClick={() => openModal('markAttendance', { date: formatDateKey(currentDate) })}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+              >
+                <CalendarPlus className="w-4 h-4" /> Mark Attendance
+              </button>
+            )}
+          </>
+        )}
+
+        {/* Requests button — visible to all users */}
+        <button
+          onClick={() => setRequestsPanelOpen(true)}
+          className="relative flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 px-4 py-2.5 rounded-lg transition-colors ml-auto"
+        >
+          <Inbox className="w-4 h-4" />
+          Requests
+          {isAdmin && pendingCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-xs w-4 h-4 flex items-center justify-center rounded-full font-semibold leading-none">
+              {pendingCount > 9 ? '9+' : pendingCount}
+            </span>
           )}
-        </div>
-      )}
+        </button>
+      </div>
 
       <TeamLegend teams={teams} />
 
@@ -150,6 +187,7 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
           allProfiles={allProfiles}
           slotMap={slotMap}
           onCellClick={onCellClick}
+          pendingLeaveMap={isAdmin ? pendingLeaveMap : undefined}
         />
       )}
 
@@ -161,6 +199,7 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
           slotMap={slotMap}
           isAdmin={isAdmin}
           onCellClick={onCellClick}
+          pendingLeaveMap={isAdmin ? pendingLeaveMap : undefined}
         />
       )}
 
@@ -173,8 +212,20 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
           isAdmin={isAdmin}
           onMarkAttendance={(profileId, date) => openModal('markAttendance', { profileId, date })}
           onOverride={(profileId, date) => openModal('rosterOverride', { profileId, date })}
+          pendingLeaveMap={isAdmin ? pendingLeaveMap : undefined}
         />
       )}
+
+      {/* Requests panel */}
+      <RequestsPanel
+        open={requestsPanelOpen}
+        onClose={() => setRequestsPanelOpen(false)}
+        onSuccess={handleSuccess}
+        profile={profile}
+        userTeam={userTeam}
+        isAdmin={isAdmin}
+        myRequests={myRequests ?? []}
+      />
 
       {/* Admin modals */}
       {isAdmin && (

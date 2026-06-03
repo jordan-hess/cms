@@ -11,9 +11,10 @@ interface DayViewProps {
   isAdmin: boolean
   onMarkAttendance: (profileId: string, date: string) => void
   onOverride: (profileId: string, date: string) => void
+  pendingLeaveMap?: Map<string, string[]>
 }
 
-export default function DayView({ currentDate, teams, allProfiles, slotMap, isAdmin, onMarkAttendance, onOverride }: DayViewProps) {
+export default function DayView({ currentDate, teams, allProfiles, slotMap, isAdmin, onMarkAttendance, onOverride, pendingLeaveMap }: DayViewProps) {
   const dateStr = formatDateKey(currentDate)
 
   const teamGroups = teams.map(team => ({
@@ -66,6 +67,11 @@ export default function DayView({ currentDate, teams, allProfiles, slotMap, isAd
                       {slot?.overrideType && (
                         <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-medium">
                           Override
+                        </span>
+                      )}
+                      {isAdmin && pendingLeaveMap?.get(dateStr)?.includes(profile.id) && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-medium">
+                          Pending Leave
                         </span>
                       )}
 

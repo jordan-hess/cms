@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Users, Phone, FileText, ShieldAlert, LogOut, UserCog, CalendarDays, Settings,
+  LayoutDashboard, Users, Phone, FileText, ShieldAlert, LogOut, UserCog, CalendarDays, Settings, Inbox,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -26,6 +26,7 @@ const adminLinks = [
   { href: '/admin', label: 'Admin Dashboard', icon: ShieldAlert },
   { href: '/admin/agents', label: 'Manage Agents', icon: UserCog },
   { href: '/admin/escalations', label: 'Escalations', icon: FileText },
+  { href: '/admin/requests', label: 'Requests', icon: Inbox },
 ]
 
 export default function Sidebar({ profile }: SidebarProps) {

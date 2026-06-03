@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import Header from '@/components/layout/Header'
 import RosterManager from '@/components/roster/RosterManager'
 import { getRosterFetchRange } from '@/lib/roster/calendarUtils'
-import { Team, TeamMember, RosterPageData } from '@/types'
+import { Team, TeamMember, RosterPageData, RequestWithDetail } from '@/types'
 
 export default async function RosterPage() {
   const supabase = await createClient()
@@ -21,6 +21,14 @@ export default async function RosterPage() {
   const now = new Date()
   const { from, to } = getRosterFetchRange(now.getFullYear(), now.getMonth())
 
+  const requestDetailSelect = `
+    *,
+    profiles!requests_profile_id_fkey(id, full_name, email),
+    teams(id, name, color),
+    leave_requests(*),
+    overtime_requests(*, overtime_entries(*))
+  `
+
   const [
     { data: teams },
     { data: allProfiles },
@@ -28,6 +36,8 @@ export default async function RosterPage() {
     { data: rotations },
     { data: attendanceRecords },
     { data: overrides },
+    { data: myRequests },
+    { data: pendingRequests },
   ] = await Promise.all([
     supabase
       .from('teams')
@@ -57,6 +67,20 @@ export default async function RosterPage() {
       .select('*, shift_templates(id, name, start_time, end_time)')
       .gte('date', from)
       .lte('date', to),
+    // Current user's own requests
+    supabase
+      .from('requests')
+      .select(requestDetailSelect)
+      .eq('profile_id', user.id)
+      .order('created_at', { ascending: false }),
+    // Admin: all pending requests (null for agents via RLS)
+    profile.role === 'admin'
+      ? supabase
+          .from('requests')
+          .select(requestDetailSelect)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+      : Promise.resolve({ data: [] }),
   ])
 
   // Derive the current user's team from the team_members data
@@ -75,6 +99,8 @@ export default async function RosterPage() {
     attendanceRecords: attendanceRecords ?? [],
     overrides: overrides ?? [],
     userTeam,
+    myRequests: (myRequests ?? []) as RequestWithDetail[],
+    pendingRequests: (pendingRequests ?? []) as RequestWithDetail[],
   }
 
   return (

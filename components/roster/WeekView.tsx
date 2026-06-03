@@ -10,11 +10,12 @@ interface WeekViewProps {
   slotMap: Map<string, ResolvedDaySlot>
   isAdmin: boolean
   onCellClick: (profileId: string, date: string) => void
+  pendingLeaveMap?: Map<string, string[]>
 }
 
 const DAY_SHORT: Record<number, string> = { 1:'Mon', 2:'Tue', 3:'Wed', 4:'Thu', 5:'Fri', 6:'Sat', 0:'Sun' }
 
-export default function WeekView({ currentDate, teams, allProfiles, slotMap, isAdmin, onCellClick }: WeekViewProps) {
+export default function WeekView({ currentDate, teams, allProfiles, slotMap, isAdmin, onCellClick, pendingLeaveMap }: WeekViewProps) {
   const weekDays = getWeekDays(currentDate)
 
   const teamGroups: { team: Team; profiles: { id: string; full_name: string }[] }[] = teams.map(team => ({
