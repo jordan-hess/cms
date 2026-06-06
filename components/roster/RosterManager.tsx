@@ -19,6 +19,7 @@ import AssignRotationModal from './admin/AssignRotationModal'
 import MarkAttendanceModal from './admin/MarkAttendanceModal'
 import RosterOverrideModal from './admin/RosterOverrideModal'
 import RequestsPanel from '@/components/requests/RequestsPanel'
+import TeamRequestsModal from './admin/TeamRequestsModal'
 import { Settings2, RotateCcw, Users2, CalendarPlus, Inbox } from 'lucide-react'
 
 type AdminModal = 'assignTeam' | 'shiftTemplate' | 'assignRotation' | 'markAttendance' | 'rosterOverride' | null
@@ -31,8 +32,9 @@ interface ModalContext {
 
 export default function RosterManager({ data }: { data: RosterPageData }) {
   const router = useRouter()
-  const { profile, teams, allProfiles, shiftTemplates, rotations, attendanceRecords, overrides, userTeam, myRequests, pendingRequests } = data
+  const { profile, teams, allProfiles, shiftTemplates, rotations, attendanceRecords, overrides, userTeam, myRequests, pendingRequests, teamLeaderTeamIds = [] } = data
   const isAdmin = profile.role === 'admin'
+  const isTeamLeader = teamLeaderTeamIds.length > 0
 
   const [view, setView] = useState<CalendarView>('month')
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -40,7 +42,14 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
   const [modalCtx, setModalCtx] = useState<ModalContext>({})
   const [requestsPanelOpen, setRequestsPanelOpen] = useState(false)
 
-  const pendingCount = pendingRequests?.filter(r => r.status === 'pending').length ?? 0
+  // Scope pending requests to team leader's teams when applicable
+  const scopedPendingRequests = useMemo(() => {
+    if (!isAdmin || !pendingRequests) return pendingRequests ?? []
+    if (!isTeamLeader) return pendingRequests
+    return pendingRequests.filter(r => r.team_id && teamLeaderTeamIds.includes(r.team_id))
+  }, [isAdmin, isTeamLeader, pendingRequests, teamLeaderTeamIds])
+
+  const pendingCount = scopedPendingRequests.filter(r => r.status === 'pending').length
 
   // Build all team_members from the nested teams structure
   const allMembers: TeamMember[] = useMemo(() =>
@@ -63,9 +72,9 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
 
   // Build pending leave map for admin calendar indicators
   const pendingLeaveMap = useMemo((): Map<string, string[]> => {
-    if (!isAdmin || !pendingRequests) return new Map()
+    if (!isAdmin || !scopedPendingRequests) return new Map()
     const map = new Map<string, string[]>()
-    for (const req of pendingRequests) {
+    for (const req of scopedPendingRequests) {
       if (req.type !== 'leave' || req.status !== 'pending') continue
       const leaveDetail = req.leave_requests?.[0]
       if (!leaveDetail) continue
@@ -76,7 +85,7 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
       }
     }
     return map
-  }, [isAdmin, pendingRequests])
+  }, [isAdmin, scopedPendingRequests])
 
   function navigate(dir: -1 | 1) {
     setCurrentDate(prev => {
@@ -154,7 +163,7 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
           </>
         )}
 
-        {/* Requests button — visible to all users */}
+        {/* Requests button */}
         <button
           onClick={() => setRequestsPanelOpen(true)}
           className="relative flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 px-4 py-2.5 rounded-lg transition-colors ml-auto"
@@ -216,16 +225,26 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
         />
       )}
 
-      {/* Requests panel */}
-      <RequestsPanel
-        open={requestsPanelOpen}
-        onClose={() => setRequestsPanelOpen(false)}
-        onSuccess={handleSuccess}
-        profile={profile}
-        userTeam={userTeam}
-        isAdmin={isAdmin}
-        myRequests={myRequests ?? []}
-      />
+      {/* Admin: Team Requests Management Modal | Agent: Request submission panel */}
+      {isAdmin ? (
+        <TeamRequestsModal
+          open={requestsPanelOpen}
+          onClose={() => setRequestsPanelOpen(false)}
+          requests={scopedPendingRequests}
+          currentUserId={profile.id}
+          onRefresh={() => router.refresh()}
+        />
+      ) : (
+        <RequestsPanel
+          open={requestsPanelOpen}
+          onClose={() => setRequestsPanelOpen(false)}
+          onSuccess={handleSuccess}
+          profile={profile}
+          userTeam={userTeam}
+          isAdmin={false}
+          myRequests={myRequests ?? []}
+        />
+      )}
 
       {/* Admin modals */}
       {isAdmin && (

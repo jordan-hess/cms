@@ -38,6 +38,7 @@ export default async function RosterPage() {
     { data: overrides },
     { data: myRequests },
     { data: pendingRequests },
+    { data: teamLeaderRows },
   ] = await Promise.all([
     supabase
       .from('teams')
@@ -73,13 +74,17 @@ export default async function RosterPage() {
       .select(requestDetailSelect)
       .eq('profile_id', user.id)
       .order('created_at', { ascending: false }),
-    // Admin: all pending requests (null for agents via RLS)
+    // Admin: all pending requests (RLS returns empty for agents)
     profile.role === 'admin'
       ? supabase
           .from('requests')
           .select(requestDetailSelect)
           .eq('status', 'pending')
           .order('created_at', { ascending: false })
+      : Promise.resolve({ data: [] }),
+    // Team leader team IDs for the current admin (empty for agents)
+    profile.role === 'admin'
+      ? supabase.from('team_leaders').select('team_id').eq('profile_id', user.id)
       : Promise.resolve({ data: [] }),
   ])
 
@@ -89,6 +94,8 @@ export default async function RosterPage() {
   const userTeam = myMembership
     ? (teams ?? []).find((t: Team & { team_members: TeamMember[] }) => t.id === myMembership.team_id) ?? null
     : null
+
+  const teamLeaderTeamIds = (teamLeaderRows ?? []).map((r: { team_id: string }) => r.team_id)
 
   const pageData: RosterPageData = {
     profile,
@@ -101,6 +108,7 @@ export default async function RosterPage() {
     userTeam,
     myRequests: (myRequests ?? []) as RequestWithDetail[],
     pendingRequests: (pendingRequests ?? []) as RequestWithDetail[],
+    teamLeaderTeamIds,
   }
 
   return (

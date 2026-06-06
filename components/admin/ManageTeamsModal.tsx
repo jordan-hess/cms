@@ -3,9 +3,9 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Modal from '@/components/ui/Modal'
-import { Team, TeamMember, TeamColor } from '@/types'
+import { Team, TeamMember, TeamColor, TeamLeader, Profile } from '@/types'
 import { teamColorClasses } from '@/lib/roster/teamColors'
-import { Plus, Loader2 } from 'lucide-react'
+import { Plus, Loader2, Crown } from 'lucide-react'
 
 const COLORS: { value: TeamColor; label: string }[] = [
   { value: 'green',  label: 'Green'  },
@@ -20,9 +20,11 @@ interface Props {
   onSuccess: () => void
   teams: Team[]
   memberships: TeamMember[]
+  teamLeaders?: TeamLeader[]
+  agents?: Pick<Profile, 'id' | 'full_name'>[]
 }
 
-export default function ManageTeamsModal({ open, onClose, onSuccess, teams, memberships }: Props) {
+export default function ManageTeamsModal({ open, onClose, onSuccess, teams, memberships, teamLeaders = [], agents = [] }: Props) {
   const [name, setName] = useState('')
   const [color, setColor] = useState<TeamColor>('blue')
   const [saving, setSaving] = useState(false)
@@ -30,6 +32,13 @@ export default function ManageTeamsModal({ open, onClose, onSuccess, teams, memb
 
   function memberCount(teamId: string) {
     return memberships.filter(m => m.team_id === teamId).length
+  }
+
+  function teamLeaderName(teamId: string): string | null {
+    const tl = teamLeaders.find(l => l.team_id === teamId)
+    if (!tl) return null
+    const profile = agents.find(a => a.id === tl.profile_id)
+    return profile?.full_name ?? null
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -61,11 +70,20 @@ export default function ManageTeamsModal({ open, onClose, onSuccess, teams, memb
             teams.map(team => {
               const c = teamColorClasses[team.color]
               const count = memberCount(team.id)
+              const leaderName = teamLeaderName(team.id)
               return (
                 <div key={team.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${c.border} ${c.lightBg}`}>
                   <span className={`w-3 h-3 rounded-full shrink-0 ${c.bg}`} />
-                  <span className={`text-sm font-medium flex-1 ${c.text}`}>{team.name}</span>
-                  <span className="text-xs text-gray-400">{count} {count === 1 ? 'agent' : 'agents'}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-sm font-medium ${c.text}`}>{team.name}</span>
+                    {leaderName && (
+                      <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        <Crown className="w-3 h-3" />
+                        {leaderName}
+                      </p>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-400 shrink-0">{count} {count === 1 ? 'agent' : 'agents'}</span>
                 </div>
               )
             })

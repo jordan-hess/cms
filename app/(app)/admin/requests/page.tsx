@@ -1,12 +1,8 @@
-'use client'
-
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 import Header from '@/components/layout/Header'
-import RequestsAdminPanel from '@/components/requests/admin/RequestsAdminPanel'
+import AdminRequestsWrapper from '@/components/requests/admin/AdminRequestsWrapper'
 import { RequestWithDetail } from '@/types'
-import { Loader2 } from 'lucide-react'
 
 const REQUEST_DETAIL_SELECT = `
   *,
@@ -16,48 +12,44 @@ const REQUEST_DETAIL_SELECT = `
   overtime_requests(*, overtime_entries(*))
 `
 
-export default function AdminRequestsPage() {
-  const router = useRouter()
-  const [requests, setRequests] = useState<RequestWithDetail[]>([])
-  const [userId, setUserId] = useState('')
-  const [loading, setLoading] = useState(true)
+export default async function AdminRequestsPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
 
-  async function fetchRequests() {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
-    setUserId(user.id)
-
-    const { data } = await supabase
+  const [
+    { data: requestsData },
+    { data: teamLeaderRows },
+  ] = await Promise.all([
+    supabase
       .from('requests')
       .select(REQUEST_DETAIL_SELECT)
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('team_leaders')
+      .select('team_id')
+      .eq('profile_id', user.id),
+  ])
 
-    setRequests((data ?? []) as RequestWithDetail[])
-    setLoading(false)
-  }
+  const teamLeaderTeamIds = (teamLeaderRows ?? []).map(r => r.team_id)
+  const isTeamLeader = teamLeaderTeamIds.length > 0
 
-  useEffect(() => { fetchRequests() }, [])
-
-  if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-      </div>
-    )
-  }
+  // Team leaders see only requests for their teams; regular admins see all
+  const requests = ((requestsData ?? []) as RequestWithDetail[]).filter(r => {
+    if (!isTeamLeader) return true
+    return r.team_id ? teamLeaderTeamIds.includes(r.team_id) : false
+  })
 
   const pendingCount = requests.filter(r => r.status === 'pending').length
 
   return (
     <div className="flex-1 overflow-auto">
-      <Header title={`Requests${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}`} userId={userId} />
+      <Header
+        title={`Requests${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}`}
+        userId={user.id}
+      />
       <div className="p-6">
-        <RequestsAdminPanel
-          requests={requests}
-          currentUserId={userId}
-          onRefresh={fetchRequests}
-        />
+        <AdminRequestsWrapper requests={requests} currentUserId={user.id} />
       </div>
     </div>
   )

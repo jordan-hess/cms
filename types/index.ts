@@ -3,7 +3,7 @@ export type CallbackStatus = 'pending' | 'completed' | 'cancelled' | 'reschedule
 export type FollowupStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
 export type FollowupType = 'followup' | 'escalation'
 export type Priority = 'low' | 'normal' | 'high' | 'urgent'
-export type NotificationType = 'info' | 'followup' | 'escalation' | 'reminder'
+export type NotificationType = 'info' | 'followup' | 'escalation' | 'reminder' | 'request'
 
 export interface Profile {
   id: string
@@ -71,6 +71,7 @@ export interface Notification {
   recipient_id: string
   sender_id: string | null
   followup_id: string | null
+  request_id: string | null
   title: string
   message: string
   type: NotificationType
@@ -175,6 +176,30 @@ export interface RosterPageData {
   userTeam: Team | null
   myRequests?: RequestWithDetail[]
   pendingRequests?: RequestWithDetail[]
+  teamLeaderTeamIds?: string[]
+}
+
+// ─── Team Leaders ─────────────────────────────────────────────────────────────
+
+export interface TeamLeader {
+  id: string
+  team_id: string
+  profile_id: string
+  assigned_by: string
+  created_at: string
+  teams?: Pick<Team, 'id' | 'name' | 'color'>
+  profiles?: Pick<Profile, 'id' | 'full_name' | 'email'>
+}
+
+export interface RequestApprovalHistory {
+  id: string
+  request_id: string
+  changed_by: string
+  from_status: RequestStatus
+  to_status: RequestStatus
+  comment: string | null
+  changed_at: string
+  profiles?: Pick<Profile, 'full_name'>
 }
 
 // ─── Requests ─────────────────────────────────────────────────────────────────

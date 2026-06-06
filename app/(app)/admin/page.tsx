@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import Header from '@/components/layout/Header'
-import { Users, Phone, FileText, AlertTriangle, CheckCircle, TrendingUp } from 'lucide-react'
+import { Users, Phone, FileText, AlertTriangle, CheckCircle, TrendingUp, Inbox } from 'lucide-react'
 import Link from 'next/link'
 
 export default async function AdminDashboardPage() {
@@ -12,17 +12,28 @@ export default async function AdminDashboardPage() {
     { data: allCallbacks },
     { data: allFollowups },
     { data: allCustomers },
+    { data: teamLeaderRows },
+    { data: allPendingRequests },
   ] = await Promise.all([
     supabase.from('profiles').select('*').eq('role', 'agent').eq('is_active', true),
     supabase.from('callbacks').select('*, customers(name, phone), profiles!callbacks_agent_id_fkey(full_name)').order('scheduled_at', { ascending: true }),
     supabase.from('followups').select('*, customers(name, phone), profiles!followups_agent_id_fkey(full_name)').order('created_at', { ascending: false }),
     supabase.from('customers').select('id'),
+    supabase.from('team_leaders').select('team_id').eq('profile_id', user!.id),
+    supabase.from('requests').select('id, status, type, team_id').eq('status', 'pending'),
   ])
 
   const pendingCallbacks = allCallbacks?.filter(c => c.status === 'pending') || []
   const openFollowups = allFollowups?.filter(f => ['open', 'in_progress'].includes(f.status)) || []
   const escalations = allFollowups?.filter(f => f.type === 'escalation') || []
   const urgentItems = allFollowups?.filter(f => f.priority === 'urgent' && f.status !== 'resolved') || []
+
+  // Team requests metric — scoped to leader's teams if applicable
+  const teamLeaderTeamIds = (teamLeaderRows ?? []).map(r => r.team_id)
+  const isTeamLeader = teamLeaderTeamIds.length > 0
+  const pendingTeamRequests = isTeamLeader
+    ? (allPendingRequests ?? []).filter(r => r.team_id && teamLeaderTeamIds.includes(r.team_id))
+    : (allPendingRequests ?? [])
 
   const stats = [
     { label: 'Active Agents', value: agents?.length || 0, icon: Users, color: 'bg-blue-500', href: '/admin/agents' },
@@ -31,15 +42,22 @@ export default async function AdminDashboardPage() {
     { label: 'Open Follow-ups', value: openFollowups.length, icon: FileText, color: 'bg-indigo-500', href: '#' },
     { label: 'Escalations', value: escalations.length, icon: AlertTriangle, color: 'bg-red-500', href: '/admin/escalations' },
     { label: 'Urgent Items', value: urgentItems.length, icon: AlertTriangle, color: 'bg-rose-600', href: '/admin/escalations' },
+    { label: isTeamLeader ? 'My Team Requests' : 'Team Requests', value: pendingTeamRequests.length, icon: Inbox, color: 'bg-purple-500', href: '/admin/requests' },
   ]
 
   return (
     <div>
       <Header title="Admin Dashboard" userId={user!.id} />
       <div className="p-6 space-y-6">
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          {stats.map(({ label, value, icon: Icon, color, href }) => (
-            <Link key={label} href={href} className="bg-white dark:bg-gray-900 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-md transition-shadow">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {stats.map(({ label, value, icon: Icon, color, href }, index) => (
+            <Link
+              key={label}
+              href={href}
+              className={`bg-white dark:bg-gray-900 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-md transition-shadow ${
+                index === 6 ? 'col-span-2 lg:col-span-1' : ''
+              }`}
+            >
               <div className="flex items-center justify-between mb-3">
                 <div className={`${color} rounded-lg p-2`}>
                   <Icon className="w-5 h-5 text-white" />
