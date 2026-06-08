@@ -7,26 +7,34 @@ export default async function CallbacksPage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
+  const isAdmin = profile?.role === 'admin'
 
   const callbackQuery = supabase
     .from('callbacks')
-    .select('*, customers(name, phone)')
+    .select('*, customers(name, phone), profiles!callbacks_agent_id_fkey(full_name)')
     .order('scheduled_at', { ascending: true })
 
-  if (profile?.role !== 'admin') callbackQuery.eq('agent_id', user!.id)
+  if (!isAdmin) callbackQuery.eq('agent_id', user!.id)
 
-  const { data: callbacks } = await callbackQuery
-
-  const { data: customers } = await supabase
-    .from('customers')
-    .select('id, name, phone')
-    .eq('created_by', user!.id)
+  const [{ data: callbacks }, { data: customers }, { data: agents }] = await Promise.all([
+    callbackQuery,
+    supabase.from('customers').select('id, name, phone').order('name', { ascending: true }),
+    isAdmin
+      ? supabase.from('profiles').select('id, full_name').eq('role', 'agent').eq('is_active', true).order('full_name')
+      : Promise.resolve({ data: [] }),
+  ])
 
   return (
     <div>
-      <Header title="Callbacks" userId={user!.id} />
+      <Header title="Callbacks" userId={user!.id} userRole={profile?.role} />
       <div className="p-6">
-        <CallbackManager callbacks={callbacks || []} customers={customers || []} userId={user!.id} />
+        <CallbackManager
+          callbacks={callbacks || []}
+          customers={customers || []}
+          userId={user!.id}
+          isAdmin={isAdmin}
+          agents={agents || []}
+        />
       </div>
     </div>
   )

@@ -17,7 +17,7 @@ export default async function AdminEscalationsPage() {
 
   return (
     <div>
-      <Header title="Escalations" userId={user!.id} />
+      <Header title="Escalations" userId={user!.id} userRole="admin" />
       <div className="p-6">
         <EscalationManager
           agents={agents || []}

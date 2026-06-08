@@ -16,7 +16,7 @@ export default async function AdminAgentsPage() {
 
   return (
     <div>
-      <Header title="Manage Agents" userId={user!.id} />
+      <Header title="Manage Agents" userId={user!.id} userRole="admin" />
       <div className="p-6">
         <AgentManager
           agents={agents || []}

@@ -35,7 +35,7 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <Header title={`Welcome back, ${profile?.full_name?.split(' ')[0]}`} userId={user!.id} />
+      <Header title={`Welcome back, ${profile?.full_name?.split(' ')[0]}`} userId={user!.id} userRole={profile?.role} />
 
       <div className="p-6 space-y-6">
         {/* Stats */}

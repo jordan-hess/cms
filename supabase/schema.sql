@@ -32,12 +32,14 @@ CREATE TABLE callbacks (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   customer_id UUID REFERENCES customers(id) ON DELETE CASCADE NOT NULL,
   agent_id UUID REFERENCES profiles(id) NOT NULL,
+  created_by UUID REFERENCES profiles(id),
   scheduled_at TIMESTAMPTZ NOT NULL,
   query_description TEXT NOT NULL,
   possible_solution TEXT,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'cancelled', 'rescheduled')),
   notes TEXT,
   completed_at TIMESTAMPTZ,
+  reminder_sent BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -66,9 +68,10 @@ CREATE TABLE notifications (
   recipient_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   sender_id UUID REFERENCES profiles(id),
   followup_id UUID REFERENCES followups(id) ON DELETE CASCADE,
+  callback_id UUID REFERENCES callbacks(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   message TEXT NOT NULL,
-  type TEXT DEFAULT 'info' CHECK (type IN ('info', 'followup', 'escalation', 'reminder')),
+  type TEXT DEFAULT 'info' CHECK (type IN ('info', 'followup', 'escalation', 'reminder', 'request', 'callback')),
   read BOOLEAN DEFAULT FALSE,
   read_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -122,10 +125,7 @@ CREATE POLICY "Admins can insert profiles" ON profiles FOR INSERT TO authenticat
 );
 
 -- Customers policies
-CREATE POLICY "Agents see their own customers" ON customers FOR SELECT TO authenticated USING (
-  created_by = auth.uid() OR
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
+CREATE POLICY "All users see all customers" ON customers FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Agents can insert customers" ON customers FOR INSERT TO authenticated WITH CHECK (auth.uid() = created_by);
 CREATE POLICY "Agents can update their customers" ON customers FOR UPDATE TO authenticated USING (
   created_by = auth.uid() OR
@@ -137,7 +137,10 @@ CREATE POLICY "Agents see their own callbacks" ON callbacks FOR SELECT TO authen
   agent_id = auth.uid() OR
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
 );
-CREATE POLICY "Agents can insert callbacks" ON callbacks FOR INSERT TO authenticated WITH CHECK (agent_id = auth.uid());
+CREATE POLICY "Users can insert callbacks" ON callbacks FOR INSERT TO authenticated WITH CHECK (
+  agent_id = auth.uid() OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
 CREATE POLICY "Agents can update their callbacks" ON callbacks FOR UPDATE TO authenticated USING (
   agent_id = auth.uid() OR
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')

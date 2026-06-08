@@ -47,7 +47,7 @@ export default async function AdminDashboardPage() {
 
   return (
     <div>
-      <Header title="Admin Dashboard" userId={user!.id} />
+      <Header title="Admin Dashboard" userId={user!.id} userRole="admin" />
       <div className="p-6 space-y-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map(({ label, value, icon: Icon, color, href }, index) => (

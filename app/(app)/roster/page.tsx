@@ -113,7 +113,7 @@ export default async function RosterPage() {
 
   return (
     <div className="flex-1 overflow-auto">
-      <Header title="Team Roster" userId={profile.id} />
+      <Header title="Team Roster" userId={profile.id} userRole={profile.role} />
       <div className="p-6 space-y-5">
         <RosterManager data={pageData} />
       </div>

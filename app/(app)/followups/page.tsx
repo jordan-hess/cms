@@ -20,11 +20,11 @@ export default async function FollowupsPage() {
   const { data: customers } = await supabase
     .from('customers')
     .select('id, name, phone')
-    .eq('created_by', user!.id)
+    .order('name', { ascending: true })
 
   return (
     <div>
-      <Header title="Follow-ups & Escalations" userId={user!.id} />
+      <Header title="Follow-ups & Escalations" userId={user!.id} userRole={profile?.role} />
       <div className="p-6">
         <FollowupManager followups={followups || []} customers={customers || []} userId={user!.id} isAdmin={profile?.role === 'admin'} />
       </div>

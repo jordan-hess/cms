@@ -5,13 +5,15 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Modal from '@/components/ui/Modal'
 import { Callback, CallbackStatus } from '@/types'
-import { Plus, Phone, Clock, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
+import { Plus, Phone, Clock, CheckCircle, XCircle, RefreshCw, User } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 
 interface Props {
-  callbacks: (Callback & { customers: { name: string; phone: string } | null })[]
+  callbacks: (Callback & { customers: { name: string; phone: string } | null; profiles?: { full_name: string } | null })[]
   customers: { id: string; name: string; phone: string }[]
   userId: string
+  isAdmin?: boolean
+  agents?: { id: string; full_name: string }[]
 }
 
 const statusConfig = {
@@ -21,14 +23,15 @@ const statusConfig = {
   rescheduled: { label: 'Rescheduled', icon: RefreshCw,   color: 'text-blue-600',   bg: 'bg-blue-50 dark:bg-blue-900/30',     badge: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400' },
 }
 
-const empty: { customer_id: string; scheduled_at: string; query_description: string; possible_solution: string; notes: string; status: CallbackStatus } = {
-  customer_id: '', scheduled_at: '', query_description: '', possible_solution: '', notes: '', status: 'pending',
+const empty = {
+  customer_id: '', scheduled_at: '', query_description: '',
+  possible_solution: '', notes: '', status: 'pending' as CallbackStatus, agent_id: '',
 }
 
 const inputCls = 'w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none'
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
 
-export default function CallbackManager({ callbacks, customers, userId }: Props) {
+export default function CallbackManager({ callbacks, customers, userId, isAdmin, agents = [] }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [filter, setFilter] = useState<string>('all')
@@ -50,6 +53,7 @@ export default function CallbackManager({ callbacks, customers, userId }: Props)
       possible_solution: cb.possible_solution || '',
       notes: cb.notes || '',
       status: cb.status,
+      agent_id: cb.agent_id,
     })
     setError('')
     setModal(true)
@@ -59,20 +63,45 @@ export default function CallbackManager({ callbacks, customers, userId }: Props)
     e.preventDefault()
     setSaving(true)
     setError('')
+
+    const targetAgentId = (isAdmin && form.agent_id) ? form.agent_id : userId
     const payload = {
-      ...form,
+      customer_id: form.customer_id,
       scheduled_at: new Date(form.scheduled_at).toISOString(),
+      query_description: form.query_description,
+      possible_solution: form.possible_solution || null,
+      notes: form.notes || null,
+      status: form.status,
       completed_at: form.status === 'completed' ? new Date().toISOString() : null,
     }
+
     if (editing) {
-      const { error } = await supabase.from('callbacks').update(payload).eq('id', editing.id)
-      if (error) setError(error.message)
+      const { error: err } = await supabase.from('callbacks').update(payload).eq('id', editing.id)
+      if (err) { setError(err.message); setSaving(false); return }
     } else {
-      const { error } = await supabase.from('callbacks').insert({ ...payload, agent_id: userId })
-      if (error) setError(error.message)
+      const { data: callback, error: err } = await supabase
+        .from('callbacks')
+        .insert({ ...payload, agent_id: targetAgentId, created_by: userId })
+        .select()
+        .single()
+      if (err) { setError(err.message); setSaving(false); return }
+
+      if (targetAgentId !== userId && callback) {
+        const customer = customers.find(c => c.id === form.customer_id)
+        await supabase.from('notifications').insert({
+          recipient_id: targetAgentId,
+          sender_id: userId,
+          callback_id: callback.id,
+          title: `New Callback Assigned: ${customer?.name}`,
+          message: `You have been assigned a callback with ${customer?.name} on ${format(new Date(form.scheduled_at), "dd MMM yyyy 'at' HH:mm")}.`,
+          type: 'callback',
+        })
+      }
     }
+
     setSaving(false)
-    if (!error) { setModal(false); router.refresh() }
+    setModal(false)
+    router.refresh()
   }
 
   async function quickStatus(id: string, status: string) {
@@ -127,6 +156,12 @@ export default function CallbackManager({ callbacks, customers, userId }: Props)
                       </div>
                       <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${sc.badge}`}>{sc.label}</span>
                     </div>
+                    {isAdmin && cb.agent_id !== userId && cb.profiles?.full_name && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
+                        <User className="w-3 h-3" />
+                        Assigned to: <span className="font-medium">{cb.profiles.full_name}</span>
+                      </p>
+                    )}
                     <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">{cb.query_description}</p>
                     {cb.possible_solution && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">Solution: {cb.possible_solution}</p>
@@ -160,6 +195,22 @@ export default function CallbackManager({ callbacks, customers, userId }: Props)
 
       <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Callback' : 'Schedule Callback'}>
         <form onSubmit={handleSave} className="space-y-4">
+          {isAdmin && !editing && (
+            <div>
+              <label className={labelCls}>Assign to Agent *</label>
+              <select
+                required
+                value={form.agent_id}
+                onChange={e => setForm({ ...form, agent_id: e.target.value })}
+                className={inputCls}
+              >
+                <option value="">Select agent...</option>
+                {agents.map(a => (
+                  <option key={a.id} value={a.id}>{a.full_name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className={labelCls}>Customer *</label>
             <select required value={form.customer_id} onChange={e => setForm({ ...form, customer_id: e.target.value })} className={inputCls}>
@@ -184,7 +235,7 @@ export default function CallbackManager({ callbacks, customers, userId }: Props)
           {editing && (
             <div>
               <label className={labelCls}>Status</label>
-              <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as any })} className={inputCls}>
+              <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as CallbackStatus })} className={inputCls}>
                 {Object.entries(statusConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>

@@ -6,18 +6,10 @@ export default async function CustomersPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user!.id).single()
-
-  const query = supabase
+  const { data: customers } = await supabase
     .from('customers')
     .select('*')
     .order('created_at', { ascending: false })
-
-  if (profile?.role !== 'admin') {
-    query.eq('created_by', user!.id)
-  }
-
-  const { data: customers } = await query
 
   return (
     <div>

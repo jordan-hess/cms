@@ -3,7 +3,7 @@ export type CallbackStatus = 'pending' | 'completed' | 'cancelled' | 'reschedule
 export type FollowupStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
 export type FollowupType = 'followup' | 'escalation'
 export type Priority = 'low' | 'normal' | 'high' | 'urgent'
-export type NotificationType = 'info' | 'followup' | 'escalation' | 'reminder' | 'request'
+export type NotificationType = 'info' | 'followup' | 'escalation' | 'reminder' | 'request' | 'callback'
 
 export interface Profile {
   id: string
@@ -34,12 +34,14 @@ export interface Callback {
   id: string
   customer_id: string
   agent_id: string
+  created_by: string | null
   scheduled_at: string
   query_description: string
   possible_solution: string | null
   status: CallbackStatus
   notes: string | null
   completed_at: string | null
+  reminder_sent: boolean
   created_at: string
   updated_at: string
   customers?: Pick<Customer, 'name' | 'phone'>
@@ -71,6 +73,7 @@ export interface Notification {
   recipient_id: string
   sender_id: string | null
   followup_id: string | null
+  callback_id: string | null
   request_id: string | null
   title: string
   message: string
