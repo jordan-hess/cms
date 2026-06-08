@@ -2,20 +2,25 @@
 
 import { useRouter } from 'next/navigation'
 import RequestsAdminPanel from './RequestsAdminPanel'
-import { RequestWithDetail } from '@/types'
+import PasswordResetPanel from '@/components/admin/PasswordResetPanel'
+import { RequestWithDetail, PasswordResetRequest } from '@/types'
 
 interface Props {
   requests: RequestWithDetail[]
   currentUserId: string
+  resetRequests: PasswordResetRequest[]
 }
 
-export default function AdminRequestsWrapper({ requests, currentUserId }: Props) {
+export default function AdminRequestsWrapper({ requests, currentUserId, resetRequests }: Props) {
   const router = useRouter()
   return (
-    <RequestsAdminPanel
-      requests={requests}
-      currentUserId={currentUserId}
-      onRefresh={() => router.refresh()}
-    />
+    <div className="space-y-6">
+      <PasswordResetPanel requests={resetRequests} onApproved={() => router.refresh()} />
+      <RequestsAdminPanel
+        requests={requests}
+        currentUserId={currentUserId}
+        onRefresh={() => router.refresh()}
+      />
+    </div>
   )
 }

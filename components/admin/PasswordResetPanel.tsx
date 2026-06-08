@@ -7,9 +7,10 @@ import { PasswordResetRequest } from '@/types'
 
 interface Props {
   requests: PasswordResetRequest[]
+  onApproved?: () => void
 }
 
-export default function PasswordResetPanel({ requests: initial }: Props) {
+export default function PasswordResetPanel({ requests: initial, onApproved }: Props) {
   const [requests, setRequests] = useState(initial)
   const [processing, setProcessing] = useState<string | null>(null)
   const [revealed, setRevealed] = useState<{ name: string; password: string } | null>(null)
@@ -32,6 +33,7 @@ export default function PasswordResetPanel({ requests: initial }: Props) {
     if (action === 'approve' && data.temp_password) {
       setRevealed({ name: req.profiles?.full_name ?? 'User', password: data.temp_password })
       setCopied(false)
+      onApproved?.()
     }
   }
 

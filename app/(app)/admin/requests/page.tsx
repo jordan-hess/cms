@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Header from '@/components/layout/Header'
 import AdminRequestsWrapper from '@/components/requests/admin/AdminRequestsWrapper'
-import { RequestWithDetail } from '@/types'
+import { RequestWithDetail, PasswordResetRequest } from '@/types'
 
 const REQUEST_DETAIL_SELECT = `
   *,
@@ -20,6 +20,7 @@ export default async function AdminRequestsPage() {
   const [
     { data: requestsData },
     { data: teamLeaderRows },
+    { data: resetRequests },
   ] = await Promise.all([
     supabase
       .from('requests')
@@ -29,6 +30,11 @@ export default async function AdminRequestsPage() {
       .from('team_leaders')
       .select('team_id')
       .eq('profile_id', user.id),
+    supabase
+      .from('password_reset_requests')
+      .select('*, profiles(full_name, email)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true }),
   ])
 
   const teamLeaderTeamIds = (teamLeaderRows ?? []).map(r => r.team_id)
@@ -41,15 +47,20 @@ export default async function AdminRequestsPage() {
   })
 
   const pendingCount = requests.filter(r => r.status === 'pending').length
+  const totalPending = pendingCount + (resetRequests?.length ?? 0)
 
   return (
     <div className="flex-1 overflow-auto">
       <Header
-        title={`Requests${pendingCount > 0 ? ` (${pendingCount} pending)` : ''}`}
+        title={`Requests${totalPending > 0 ? ` (${totalPending} pending)` : ''}`}
         userId={user.id}
       />
       <div className="p-6">
-        <AdminRequestsWrapper requests={requests} currentUserId={user.id} />
+        <AdminRequestsWrapper
+          requests={requests}
+          currentUserId={user.id}
+          resetRequests={(resetRequests ?? []) as PasswordResetRequest[]}
+        />
       </div>
     </div>
   )
