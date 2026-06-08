@@ -10,6 +10,7 @@ CREATE TABLE profiles (
   department TEXT,
   avatar_url TEXT,
   is_active BOOLEAN DEFAULT TRUE,
+  force_password_change BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -77,6 +78,16 @@ CREATE TABLE notifications (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Password reset requests
+CREATE TABLE password_reset_requests (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  reviewed_by UUID REFERENCES profiles(id),
+  reviewed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Triggers to auto-update updated_at
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
@@ -113,6 +124,7 @@ ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE callbacks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE followups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE password_reset_requests ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
 CREATE POLICY "Profiles viewable by authenticated users" ON profiles FOR SELECT TO authenticated USING (TRUE);
@@ -155,6 +167,14 @@ CREATE POLICY "Authenticated users can insert followups" ON followups FOR INSERT
 CREATE POLICY "Agents update assigned followups" ON followups FOR UPDATE TO authenticated USING (
   agent_id = auth.uid() OR
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
+
+-- Password reset request policies
+CREATE POLICY "Admins see all reset requests" ON password_reset_requests FOR SELECT TO authenticated USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+);
+CREATE POLICY "Users see own reset requests" ON password_reset_requests FOR SELECT TO authenticated USING (
+  profile_id = auth.uid()
 );
 
 -- Notifications policies

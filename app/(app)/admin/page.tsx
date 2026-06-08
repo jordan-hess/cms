@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import Header from '@/components/layout/Header'
 import { Users, Phone, FileText, AlertTriangle, CheckCircle, TrendingUp, Inbox } from 'lucide-react'
 import Link from 'next/link'
+import PasswordResetPanel from '@/components/admin/PasswordResetPanel'
 
 export default async function AdminDashboardPage() {
   const supabase = await createClient()
@@ -14,6 +15,7 @@ export default async function AdminDashboardPage() {
     { data: allCustomers },
     { data: teamLeaderRows },
     { data: allPendingRequests },
+    { data: resetRequests },
   ] = await Promise.all([
     supabase.from('profiles').select('*').eq('role', 'agent').eq('is_active', true),
     supabase.from('callbacks').select('*, customers(name, phone), profiles!callbacks_agent_id_fkey(full_name)').order('scheduled_at', { ascending: true }),
@@ -21,6 +23,7 @@ export default async function AdminDashboardPage() {
     supabase.from('customers').select('id'),
     supabase.from('team_leaders').select('team_id').eq('profile_id', user!.id),
     supabase.from('requests').select('id, status, type, team_id').eq('status', 'pending'),
+    supabase.from('password_reset_requests').select('*, profiles(full_name, email)').eq('status', 'pending').order('created_at', { ascending: true }),
   ])
 
   const pendingCallbacks = allCallbacks?.filter(c => c.status === 'pending') || []
@@ -107,6 +110,9 @@ export default async function AdminDashboardPage() {
             })}
           </div>
         </div>
+
+        {/* Password reset requests */}
+        <PasswordResetPanel requests={resetRequests || []} />
 
         {/* Recent escalations */}
         <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">

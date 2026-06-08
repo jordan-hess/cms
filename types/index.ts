@@ -13,8 +13,19 @@ export interface Profile {
   department: string | null
   avatar_url: string | null
   is_active: boolean
+  force_password_change: boolean
   created_at: string
   updated_at: string
+}
+
+export interface PasswordResetRequest {
+  id: string
+  profile_id: string
+  status: 'pending' | 'approved' | 'rejected'
+  reviewed_by: string | null
+  reviewed_at: string | null
+  created_at: string
+  profiles?: Pick<Profile, 'full_name' | 'email'>
 }
 
 export interface Customer {

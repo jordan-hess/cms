@@ -32,14 +32,19 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
-  if (pathname.startsWith('/admin')) {
+  // For authenticated non-API requests, check force_password_change and role
+  if (user && !pathname.startsWith('/api/') && pathname !== '/change-password') {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
-      .eq('id', user?.id)
+      .select('role, force_password_change')
+      .eq('id', user.id)
       .single()
 
-    if (profile?.role !== 'admin') {
+    if (profile?.force_password_change) {
+      return NextResponse.redirect(new URL('/change-password', request.url))
+    }
+
+    if (pathname.startsWith('/admin') && profile?.role !== 'admin') {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
   }
