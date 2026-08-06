@@ -1,4 +1,4 @@
-export type Role = 'agent' | 'admin'
+export type Role = 'agent' | 'admin' | 'management'
 export type CallbackStatus = 'pending' | 'completed' | 'cancelled' | 'rescheduled'
 export type FollowupStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
 export type FollowupType = 'followup' | 'escalation'
