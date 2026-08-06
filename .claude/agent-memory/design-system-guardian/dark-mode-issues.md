@@ -62,15 +62,8 @@ info: 'bg-gray-100 text-gray-700',
 ```
 No dark counterparts — notification type badges will appear white-background in dark mode.
 
-## Minor — Login page
+## Fixed — Login page
 
-Login page has no dark mode support at all:
-- `bg-gradient-to-br from-blue-50 to-indigo-100` — no dark variant
-- `.hero-shape` background: `rgba(217, 217, 217, 1)` — hardcoded light gray
-- Card: `bg-white rounded-2xl shadow-xl` — no `dark:bg-gray-900`
-- Input fields: `border border-gray-300 ... text-gray-900` — no dark variants
-- Labels: `text-gray-700` — no dark variants
-
-Login is a public page so dark mode may be intentionally excluded, but the `.hero-shape` uses a hardcoded light gray that looks poor regardless.
+Login page (`app/login/page.tsx`) now has full dark mode support, matching the `inputCls`/`errorCls` pattern from `change-password/page.tsx`: gradient background, card, inputs, labels, all fp-* views, and the `.hero-shape` (dark override added in `globals.css` via `.dark .hero-shape`).
 
 **How to apply:** When fixing any of these modals, apply the full inputCls/labelCls pattern with dark variants consistently, matching the established pattern from CustomerManager/CallbackManager/FollowupManager/EscalationManager.

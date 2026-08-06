@@ -1,0 +1,3 @@
+- [User Role](user_role.md) — Jordan is the project owner; full-stack developer building a care CMS on Next.js 16.2.6 + Supabase
+- [Schema Overview](project_schema_overview.md) — Approved schema layers: core (schema.sql), roster (roster-schema.sql), requests (requests-schema.sql)
+- [Team Leader Migration](project_team_leader_review.md) — Approved design for team_leaders table + request_approval_history + RLS for team-scoped approvals

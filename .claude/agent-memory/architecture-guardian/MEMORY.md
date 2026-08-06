@@ -1,0 +1,2 @@
+- [User Role](user-role.md) — Jordan Hess, lead dev, full-stack ownership of care-cms
+- [Feedback: Review Before Code](feedback-review-first.md) — always deliver architectural plan before any implementation

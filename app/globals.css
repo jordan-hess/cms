@@ -60,3 +60,7 @@ body {
   /* Transparent background around the shape */
   background-color: rgba(217, 217, 217, 1);
 }
+
+.dark .hero-shape {
+  background-color: rgba(30, 41, 59, 0.6);
+}
