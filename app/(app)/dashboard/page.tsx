@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import Header from '@/components/layout/Header'
 import DashboardContent, { DashboardStat } from '@/components/dashboard/DashboardContent'
-import { Phone, FileText, Users, AlertTriangle } from 'lucide-react'
+import ConsoleDesktop from '@/components/console/ConsoleDesktop'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -26,11 +26,22 @@ export default async function DashboardPage() {
   const urgentFollowups = followups?.filter(f => f.priority === 'urgent' && f.status !== 'resolved') || []
 
   const stats: DashboardStat[] = [
-    { label: 'My Customers', value: customers?.length || 0, icon: Users, color: 'bg-blue-500', href: '/customers' },
-    { label: 'Pending Callbacks', value: pendingCallbacks.length, icon: Phone, color: 'bg-amber-500', href: '/callbacks' },
-    { label: 'Open Follow-ups', value: openFollowups.length, icon: FileText, color: 'bg-indigo-500', href: '/followups' },
-    { label: 'Unread Alerts', value: notifications?.length || 0, icon: AlertTriangle, color: 'bg-red-500', href: '#' },
+    { label: 'My Customers', value: customers?.length || 0, icon: 'users', color: 'bg-blue-500', href: '/customers' },
+    { label: 'Pending Callbacks', value: pendingCallbacks.length, icon: 'phone', color: 'bg-amber-500', href: '/callbacks' },
+    { label: 'Open Follow-ups', value: openFollowups.length, icon: 'file-text', color: 'bg-indigo-500', href: '/followups' },
+    { label: 'Unread Alerts', value: notifications?.length || 0, icon: 'alert-triangle', color: 'bg-red-500', href: '#' },
   ]
+
+  if (profile?.role === 'admin' || profile?.role === 'management') {
+    return (
+      <div className="h-full">
+        <ConsoleDesktop
+          role={profile.role}
+          dashboardData={{ stats, pendingCallbacks, openFollowups, urgentFollowups }}
+        />
+      </div>
+    )
+  }
 
   return (
     <div>

@@ -1,12 +1,26 @@
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
-import { Phone, FileText, CheckCircle, Clock, AlertTriangle, type LucideIcon } from 'lucide-react'
+import { Phone, FileText, CheckCircle, Clock, AlertTriangle, Users, type LucideIcon } from 'lucide-react'
 import { Callback, Followup } from '@/types'
+
+// Stat icons are referenced by name (not by component) because DashboardContentProps
+// crosses the server -> client boundary into ConsoleDesktop (a 'use client' component
+// tree). React Server Components can only serialize plain data across that boundary —
+// a raw component/function reference (e.g. `icon: Users`) is not serializable and
+// crashes with "Functions cannot be passed directly to Client Components".
+export type StatIconName = 'users' | 'phone' | 'file-text' | 'alert-triangle'
+
+const STAT_ICONS: Record<StatIconName, LucideIcon> = {
+  users: Users,
+  phone: Phone,
+  'file-text': FileText,
+  'alert-triangle': AlertTriangle,
+}
 
 export interface DashboardStat {
   label: string
   value: number
-  icon: LucideIcon
+  icon: StatIconName
   color: string
   href: string
 }
@@ -23,17 +37,20 @@ export default function DashboardContent({ stats, pendingCallbacks, openFollowup
     <div className="p-6 space-y-6">
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map(({ label, value, icon: Icon, color, href }) => (
-          <Link key={label} href={href} className="bg-white dark:bg-gray-900 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-3">
-              <div className={`${color} rounded-lg p-2`}>
-                <Icon className="w-5 h-5 text-white" />
+        {stats.map(({ label, value, icon, color, href }) => {
+          const Icon = STAT_ICONS[icon]
+          return (
+            <Link key={label} href={href} className="bg-white dark:bg-gray-900 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-3">
+                <div className={`${color} rounded-lg p-2`}>
+                  <Icon className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-3xl font-bold text-gray-900 dark:text-white">{value}</span>
               </div>
-              <span className="text-3xl font-bold text-gray-900 dark:text-white">{value}</span>
-            </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">{label}</p>
-          </Link>
-        ))}
+              <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">{label}</p>
+            </Link>
+          )
+        })}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
