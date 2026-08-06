@@ -116,6 +116,7 @@ export default function Window({ state, children, onDrag, onResize, onFocus, onM
         <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
+            onPointerDown={e => e.stopPropagation()}
             onClick={() => playExitAnimation(onMinimize)}
             aria-label={`Minimize ${state.title}`}
             className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
@@ -124,6 +125,7 @@ export default function Window({ state, children, onDrag, onResize, onFocus, onM
           </button>
           <button
             type="button"
+            onPointerDown={e => e.stopPropagation()}
             onClick={() => playExitAnimation(onClose)}
             aria-label={`Close ${state.title}`}
             className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
