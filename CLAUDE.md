@@ -17,7 +17,7 @@ This project uses **Next.js 16.2.6**, which has breaking changes vs. earlier ver
 npm run dev          # Start dev server (Turbopack)
 npm run build        # Production build
 npm run lint         # ESLint
-npm run setup:users  # Bootstrap first admin + agent in Supabase (run once after schema setup)
+npm run setup:users  # Bootstrap first admin + agent + management-dev account in Supabase (run once after schema setup)
 ```
 
 No test suite is configured.
@@ -28,7 +28,9 @@ No test suite is configured.
 2. Run `supabase/fix-auth-trigger.sql` in the SQL Editor (repairs the auth trigger so user creation also creates a profile row — required before any users can be created).
 3. Run `supabase/roster-schema.sql` in the SQL Editor (creates teams, shift_templates, team_rotations, team_members, attendance_records, roster_overrides tables and seeds the four default teams: Green, Blue, Red, Yellow).
 4. Copy `.env.local.example` → `.env.local` and fill in the three env vars.
-5. Run `npm run setup:users` to create `admin@carecms.local / Admin123!` and `agent@carecms.local / Agent123!`.
+5. Run `npm run setup:users` to create `admin@carecms.local / Admin123!`, `agent@carecms.local / Agent123!`, and `management-dev@carecms.local / Management123!`.
+
+Note: existing/already-deployed databases that ran `schema.sql` before the `management` role was added need to separately run `supabase/add-management-role.sql` once (fresh installs already get the `management` role from step 1 above).
 
 ## Architecture
 

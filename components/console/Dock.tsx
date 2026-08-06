@@ -1,5 +1,6 @@
 'use client'
 
+import { forwardRef } from 'react'
 import { LayoutDashboard, Users, Building2 } from 'lucide-react'
 import { ConsoleKind, WindowState } from './types'
 
@@ -14,9 +15,12 @@ export interface DockProps {
   onIconClick: (id: string) => void
 }
 
-export default function Dock({ windows, onIconClick }: DockProps) {
+const Dock = forwardRef<HTMLDivElement, DockProps>(function Dock({ windows, onIconClick }, ref) {
   return (
-    <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900/95 dark:bg-black/60 border-t border-gray-800 backdrop-blur">
+    <div
+      ref={ref}
+      className="absolute bottom-0 left-0 right-0 z-50 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900/95 dark:bg-black/60 border-t border-gray-800 backdrop-blur"
+    >
       {windows.map(w => {
         const Icon = ICONS[w.kind]
         const isOpen = w.status === 'open'
@@ -41,4 +45,6 @@ export default function Dock({ windows, onIconClick }: DockProps) {
       })}
     </div>
   )
-}
+})
+
+export default Dock

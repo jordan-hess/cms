@@ -13,12 +13,18 @@ export interface WindowProps {
   onFocus: () => void
   onMinimize: () => void
   onClose: () => void
+  bounds: { width: number; height: number }
 }
 
 const MIN_WIDTH = 320
 const MIN_HEIGHT = 240
 
-export default function Window({ state, children, onDrag, onResize, onFocus, onMinimize, onClose }: WindowProps) {
+// Keep at least this much width and the full title bar height reachable within the
+// desktop bounds, so a dragged window's title bar can never end up fully off-screen.
+const MIN_REACHABLE_WIDTH = 120
+const MIN_REACHABLE_HEIGHT = 48
+
+export default function Window({ state, children, onDrag, onResize, onFocus, onMinimize, onClose, bounds }: WindowProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const dragOrigin = useRef<{ pointerX: number; pointerY: number; startX: number; startY: number } | null>(null)
   const resizeOrigin = useRef<{ pointerX: number; pointerY: number; startWidth: number; startHeight: number } | null>(null)
@@ -69,7 +75,17 @@ export default function Window({ state, children, onDrag, onResize, onFocus, onM
     if (!dragOrigin.current) return
     const dx = e.clientX - dragOrigin.current.pointerX
     const dy = e.clientY - dragOrigin.current.pointerY
-    onDrag(Math.max(0, dragOrigin.current.startX + dx), Math.max(0, dragOrigin.current.startY + dy))
+    let nextX = Math.max(0, dragOrigin.current.startX + dx)
+    let nextY = Math.max(0, dragOrigin.current.startY + dy)
+    // Bounds are 0 until ConsoleDesktop has measured the desktop container; skip the
+    // max-clamp in that case rather than pinning everything to 0.
+    if (bounds.width > 0) {
+      nextX = Math.min(nextX, Math.max(0, bounds.width - MIN_REACHABLE_WIDTH))
+    }
+    if (bounds.height > 0) {
+      nextY = Math.min(nextY, Math.max(0, bounds.height - MIN_REACHABLE_HEIGHT))
+    }
+    onDrag(nextX, nextY)
   }
 
   function handleTitlePointerUp() {
