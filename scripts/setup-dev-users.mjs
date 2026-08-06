@@ -20,6 +20,13 @@ const DEV_USERS = [
     role: 'agent',
     department: 'Support',
   },
+  {
+    email: 'management-dev@carecms.local',
+    password: 'Management123!',
+    full_name: 'Dev Management',
+    role: 'management',
+    department: 'Management',
+  },
 ]
 
 function loadEnvFile(filePath) {
