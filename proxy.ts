@@ -41,7 +41,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  if (!userId && pathname !== '/login' && !pathname.startsWith('/api/') && pathname !== '/auth/callback') {
+  if (!userId && pathname !== '/login' && pathname !== '/login/legacy' && !pathname.startsWith('/api/') && pathname !== '/auth/callback') {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 

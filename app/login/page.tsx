@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import Link from 'next/link'
 import { signIn } from 'next-auth/react'
 import { Loader2, ArrowLeft, CheckCircle, ShieldQuestion, UserCog } from 'lucide-react'
 
@@ -264,6 +265,9 @@ export default function LoginPage() {
 
         </div>
         <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-6">Contact your administrator to get access</p>
+        <Link href="/login/legacy" className="block text-center text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 mt-2">
+          Trouble signing in? Use the legacy sign-in
+        </Link>
       </div>
     </div>
   )
