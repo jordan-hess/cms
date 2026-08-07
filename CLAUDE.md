@@ -49,7 +49,7 @@ app/
   layout.tsx              # Root layout
   page.tsx                # Redirects → /dashboard
   login/page.tsx          # Public, client component
-  auth/callback/route.ts  # OAuth code exchange
+  login/legacy/page.tsx   # Legacy Supabase-Auth sign-in (dual-login grace window)
   api/admin/create-user/  # Service-role user creation (admin only)
   (app)/                  # Protected route group
     layout.tsx            # Auth check + Sidebar
