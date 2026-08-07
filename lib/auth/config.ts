@@ -11,7 +11,7 @@ function createLookupClient() {
   )
 }
 
-const { handlers: { GET, POST }, auth, signIn, signOut } = NextAuth({
+export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: 'jwt' },
   pages: { signIn: '/login' },
   providers: [
@@ -52,5 +52,3 @@ const { handlers: { GET, POST }, auth, signIn, signOut } = NextAuth({
     },
   },
 })
-
-export { GET, POST, auth, signIn, signOut }
