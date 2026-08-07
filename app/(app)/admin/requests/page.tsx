@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import { redirect } from 'next/navigation'
 import Header from '@/components/layout/Header'
 import AdminRequestsWrapper from '@/components/requests/admin/AdminRequestsWrapper'
@@ -14,8 +15,8 @@ const REQUEST_DETAIL_SELECT = `
 
 export default async function AdminRequestsPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const userId = await getCurrentUserId(supabase)
+  if (!userId) redirect('/login')
 
   const [
     { data: requestsData },
@@ -29,7 +30,7 @@ export default async function AdminRequestsPage() {
     supabase
       .from('team_leaders')
       .select('team_id')
-      .eq('profile_id', user.id),
+      .eq('profile_id', userId),
     supabase
       .from('password_reset_requests')
       .select('*, profiles(full_name, email)')
@@ -53,12 +54,12 @@ export default async function AdminRequestsPage() {
     <div className="flex-1 overflow-auto">
       <Header
         title={`Requests${totalPending > 0 ? ` (${totalPending} pending)` : ''}`}
-        userId={user.id}
+        userId={userId}
       />
       <div className="p-6">
         <AdminRequestsWrapper
           requests={requests}
-          currentUserId={user.id}
+          currentUserId={userId}
           resetRequests={(resetRequests ?? []) as PasswordResetRequest[]}
         />
       </div>

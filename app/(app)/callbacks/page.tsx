@@ -1,12 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import Header from '@/components/layout/Header'
 import CallbackManager from '@/components/callbacks/CallbackManager'
 
 export default async function CallbacksPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const userId = await getCurrentUserId(supabase)
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user!.id).single()
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId!).single()
   const isAdmin = profile?.role === 'admin'
 
   const callbackQuery = supabase
@@ -14,7 +15,7 @@ export default async function CallbacksPage() {
     .select('*, customers(name, phone), profiles!callbacks_agent_id_fkey(full_name)')
     .order('scheduled_at', { ascending: true })
 
-  if (!isAdmin) callbackQuery.eq('agent_id', user!.id)
+  if (!isAdmin) callbackQuery.eq('agent_id', userId!)
 
   const [{ data: callbacks }, { data: customers }, { data: agents }] = await Promise.all([
     callbackQuery,
@@ -26,12 +27,12 @@ export default async function CallbacksPage() {
 
   return (
     <div>
-      <Header title="Callbacks" userId={user!.id} userRole={profile?.role} />
+      <Header title="Callbacks" userId={userId!} userRole={profile?.role} />
       <div className="p-6">
         <CallbackManager
           callbacks={callbacks || []}
           customers={customers || []}
-          userId={user!.id}
+          userId={userId!}
           isAdmin={isAdmin}
           agents={agents || []}
         />

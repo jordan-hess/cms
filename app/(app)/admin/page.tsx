@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import Header from '@/components/layout/Header'
 import { Users, Phone, FileText, AlertTriangle, CheckCircle, TrendingUp, Inbox } from 'lucide-react'
 import Link from 'next/link'
@@ -6,7 +7,7 @@ import PasswordResetPanel from '@/components/admin/PasswordResetPanel'
 
 export default async function AdminDashboardPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const userId = await getCurrentUserId(supabase)
 
   const [
     { data: agents },
@@ -21,7 +22,7 @@ export default async function AdminDashboardPage() {
     supabase.from('callbacks').select('*, customers(name, phone), profiles!callbacks_agent_id_fkey(full_name)').order('scheduled_at', { ascending: true }),
     supabase.from('followups').select('*, customers(name, phone), profiles!followups_agent_id_fkey(full_name)').order('created_at', { ascending: false }),
     supabase.from('customers').select('id'),
-    supabase.from('team_leaders').select('team_id').eq('profile_id', user!.id),
+    supabase.from('team_leaders').select('team_id').eq('profile_id', userId!),
     supabase.from('requests').select('id, status, type, team_id').eq('status', 'pending'),
     supabase.from('password_reset_requests').select('*, profiles(full_name, email)').eq('status', 'pending').order('created_at', { ascending: true }),
   ])
@@ -50,7 +51,7 @@ export default async function AdminDashboardPage() {
 
   return (
     <div>
-      <Header title="Admin Dashboard" userId={user!.id} userRole="admin" />
+      <Header title="Admin Dashboard" userId={userId!} userRole="admin" />
       <div className="p-6 space-y-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map(({ label, value, icon: Icon, color, href }, index) => (

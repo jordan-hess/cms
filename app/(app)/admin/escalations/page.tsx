@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import Header from '@/components/layout/Header'
 import EscalationManager from '@/components/admin/EscalationManager'
 
 export default async function AdminEscalationsPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const userId = await getCurrentUserId(supabase)
 
   const [{ data: agents }, { data: customers }, { data: followups }] = await Promise.all([
     supabase.from('profiles').select('id, full_name, email').eq('role', 'agent').eq('is_active', true),
@@ -17,13 +18,13 @@ export default async function AdminEscalationsPage() {
 
   return (
     <div>
-      <Header title="Escalations" userId={user!.id} userRole="admin" />
+      <Header title="Escalations" userId={userId!} userRole="admin" />
       <div className="p-6">
         <EscalationManager
           agents={agents || []}
           customers={customers || []}
           escalations={followups || []}
-          adminId={user!.id}
+          adminId={userId!}
         />
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import { redirect } from 'next/navigation'
 import Header from '@/components/layout/Header'
 import RosterManager from '@/components/roster/RosterManager'
@@ -7,13 +8,13 @@ import { Team, TeamMember, RosterPageData, RequestWithDetail } from '@/types'
 
 export default async function RosterPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const userId = await getCurrentUserId(supabase)
+  if (!userId) redirect('/login')
 
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
-    .eq('id', user.id)
+    .eq('id', userId)
     .single()
 
   if (!profile) redirect('/login')
@@ -72,7 +73,7 @@ export default async function RosterPage() {
     supabase
       .from('requests')
       .select(requestDetailSelect)
-      .eq('profile_id', user.id)
+      .eq('profile_id', userId)
       .order('created_at', { ascending: false }),
     // Admin: all pending requests (RLS returns empty for agents)
     profile.role === 'admin'
@@ -84,13 +85,13 @@ export default async function RosterPage() {
       : Promise.resolve({ data: [] }),
     // Team leader team IDs for the current admin (empty for agents)
     profile.role === 'admin'
-      ? supabase.from('team_leaders').select('team_id').eq('profile_id', user.id)
+      ? supabase.from('team_leaders').select('team_id').eq('profile_id', userId)
       : Promise.resolve({ data: [] }),
   ])
 
   // Derive the current user's team from the team_members data
   const flatMembers: TeamMember[] = (teams ?? []).flatMap((t: Team & { team_members: TeamMember[] }) => t.team_members ?? [])
-  const myMembership = flatMembers.find(m => m.profile_id === user.id)
+  const myMembership = flatMembers.find(m => m.profile_id === userId)
   const userTeam = myMembership
     ? (teams ?? []).find((t: Team & { team_members: TeamMember[] }) => t.id === myMembership.team_id) ?? null
     : null

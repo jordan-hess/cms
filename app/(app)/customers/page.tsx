@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import Header from '@/components/layout/Header'
 import CustomerManager from '@/components/customers/CustomerManager'
 
 export default async function CustomersPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const userId = await getCurrentUserId(supabase)
 
   const { data: customers } = await supabase
     .from('customers')
@@ -13,9 +14,9 @@ export default async function CustomersPage() {
 
   return (
     <div>
-      <Header title="Customers" userId={user!.id} />
+      <Header title="Customers" userId={userId!} />
       <div className="p-6">
-        <CustomerManager customers={customers || []} userId={user!.id} />
+        <CustomerManager customers={customers || []} userId={userId!} />
       </div>
     </div>
   )

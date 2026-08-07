@@ -1,11 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import Header from '@/components/layout/Header'
 import DashboardContent, { DashboardStat } from '@/components/dashboard/DashboardContent'
 import ConsoleDesktop from '@/components/console/ConsoleDesktop'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const userId = await getCurrentUserId(supabase)
 
   const [
     { data: profile },
@@ -14,11 +15,11 @@ export default async function DashboardPage() {
     { data: customers },
     { data: notifications },
   ] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', user!.id).single(),
-    supabase.from('callbacks').select('*, customers(name, phone)').eq('agent_id', user!.id).order('scheduled_at', { ascending: true }),
-    supabase.from('followups').select('*, customers(name, phone)').eq('agent_id', user!.id).order('created_at', { ascending: false }),
-    supabase.from('customers').select('id').eq('created_by', user!.id),
-    supabase.from('notifications').select('id').eq('recipient_id', user!.id).eq('read', false),
+    supabase.from('profiles').select('*').eq('id', userId!).single(),
+    supabase.from('callbacks').select('*, customers(name, phone)').eq('agent_id', userId!).order('scheduled_at', { ascending: true }),
+    supabase.from('followups').select('*, customers(name, phone)').eq('agent_id', userId!).order('created_at', { ascending: false }),
+    supabase.from('customers').select('id').eq('created_by', userId!),
+    supabase.from('notifications').select('id').eq('recipient_id', userId!).eq('read', false),
   ])
 
   const pendingCallbacks = callbacks?.filter(c => c.status === 'pending') || []
@@ -45,7 +46,7 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <Header title={`Welcome back, ${profile?.full_name?.split(' ')[0]}`} userId={user!.id} userRole={profile?.role} />
+      <Header title={`Welcome back, ${profile?.full_name?.split(' ')[0]}`} userId={userId!} userRole={profile?.role} />
       <DashboardContent
         stats={stats}
         pendingCallbacks={pendingCallbacks}
