@@ -730,6 +730,171 @@ git commit -m "feat: add legacy login page and extend data-access clients with l
 
 ---
 
+### Task 7.5: Add `getCurrentUserId` helper and update all protected pages to stop calling `supabase.auth.getUser()` directly
+
+**Newly discovered during Task 7's review — a severe, previously-missed gap, not a follow-up.** Supabase's `accessToken` client option (the mechanism Task 3 uses to mint compatible JWTs from an Auth.js session) has a documented side effect: once set, the client's ENTIRE `.auth` namespace throws on any access (`node_modules/@supabase/supabase-js`'s `SupabaseClient` constructor wraps `this.auth` in a `Proxy` that throws for every property access when `accessToken` is configured — confirmed by reading the installed package's source directly, not assumed). Every one of the 11 files below is an async Server Component that calls `const { data: { user } } = await supabase.auth.getUser()` on the client returned by `lib/supabase/server.ts`'s `createClient()` — this is `CLAUDE.md`'s own documented "Data fetching pattern," used everywhere. For an Auth.js-authenticated user (the primary, going-forward path, not just the legacy grace-window edge case), this throws unconditionally — every protected page in the app would 500. This must be fixed before Task 12's QA, since Task 12 is the first point the plan would have caught this by actually logging in as a real Auth.js user and hitting these pages.
+
+Why this didn't break Tasks 1-7's own verification: none of those tasks' manual checks logged in as a *migrated* Auth.js user and loaded a data-bearing page — Task 6 confirmed only that login *rejects* correctly (no profile has a real password yet), and Task 7 confirmed the *legacy* path specifically (whose client branch does NOT set `accessToken`, so `.auth.getUser()` works fine there — this is exactly why Task 7's live check "worked" while this gap remained hidden).
+
+**Files:**
+- Create: `lib/auth/getCurrentUserId.ts`
+- Modify: `app/(app)/layout.tsx`
+- Modify: `app/(app)/dashboard/page.tsx`
+- Modify: `app/(app)/customers/page.tsx`
+- Modify: `app/(app)/callbacks/page.tsx`
+- Modify: `app/(app)/followups/page.tsx`
+- Modify: `app/(app)/roster/page.tsx`
+- Modify: `app/(app)/admin/layout.tsx`
+- Modify: `app/(app)/admin/page.tsx`
+- Modify: `app/(app)/admin/agents/page.tsx`
+- Modify: `app/(app)/admin/escalations/page.tsx`
+- Modify: `app/(app)/admin/requests/page.tsx`
+
+(`app/(app)/change-password/page.tsx` also calls `supabase.auth.getUser()` today, but Task 10 already removes that entirely as part of its own rewrite — do not touch that file in this task, it would just create a merge conflict with Task 10's work.)
+
+**Interfaces:**
+- Consumes: `auth` from `lib/auth/config.ts` (Task 2).
+- Produces: `getCurrentUserId(supabase: SupabaseClient): Promise<string | null>` from `lib/auth/getCurrentUserId.ts`. This is the new standard way every Server Component gets the current user's id — any future page added to this codebase should use it instead of `supabase.auth.getUser()`.
+
+- [ ] **Step 1: Add the helper**
+
+Create `lib/auth/getCurrentUserId.ts`:
+
+```ts
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { auth } from './config'
+
+/**
+ * Resolves the current user's id from whichever session is active.
+ *
+ * `lib/supabase/server.ts`'s createClient() returns one of two client
+ * shapes depending on which session authenticated the request: the
+ * Auth.js-JWT-minting client (accessToken option set — Supabase disables
+ * its ENTIRE .auth namespace in this mode, throwing on any access), or the
+ * raw legacy-session client (accessToken NOT set, .auth fully functional)
+ * for a grace-window legacy user. Calling `supabase.auth.getUser()`
+ * directly only works for the second case. This function checks the
+ * Auth.js session first (the common case going forward) and only touches
+ * `supabase.auth.getUser()` when there is no Auth.js session — at which
+ * point the client is guaranteed to be the legacy one, so it's safe.
+ */
+export async function getCurrentUserId(supabase: SupabaseClient): Promise<string | null> {
+  const session = await auth()
+  if (session?.user?.id) return session.user.id
+
+  const { data: { user } } = await supabase.auth.getUser()
+  return user?.id ?? null
+}
+```
+
+- [ ] **Step 2: Update `app/(app)/layout.tsx`**
+
+Replace:
+
+```tsx
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single()
+```
+
+with:
+
+```tsx
+  const supabase = await createClient()
+  const userId = await getCurrentUserId(supabase)
+
+  if (!userId) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single()
+```
+
+Add `import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'` alongside the existing imports.
+
+- [ ] **Step 3: Update `app/(app)/dashboard/page.tsx`**
+
+Replace:
+
+```tsx
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const [
+    { data: profile },
+    { data: callbacks },
+    { data: followups },
+    { data: customers },
+    { data: notifications },
+  ] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', user!.id).single(),
+    supabase.from('callbacks').select('*, customers(name, phone)').eq('agent_id', user!.id).order('scheduled_at', { ascending: true }),
+    supabase.from('followups').select('*, customers(name, phone)').eq('agent_id', user!.id).order('created_at', { ascending: false }),
+    supabase.from('customers').select('id').eq('created_by', user!.id),
+    supabase.from('notifications').select('id').eq('recipient_id', user!.id).eq('read', false),
+  ])
+```
+
+with:
+
+```tsx
+  const supabase = await createClient()
+  const userId = await getCurrentUserId(supabase)
+
+  const [
+    { data: profile },
+    { data: callbacks },
+    { data: followups },
+    { data: customers },
+    { data: notifications },
+  ] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', userId!).single(),
+    supabase.from('callbacks').select('*, customers(name, phone)').eq('agent_id', userId!).order('scheduled_at', { ascending: true }),
+    supabase.from('followups').select('*, customers(name, phone)').eq('agent_id', userId!).order('created_at', { ascending: false }),
+    supabase.from('customers').select('id').eq('created_by', userId!),
+    supabase.from('notifications').select('id').eq('recipient_id', userId!).eq('read', false),
+  ])
+```
+
+(Kept the `!` non-null assertion here since, unlike `layout.tsx`, this page never had an explicit `if (!user) redirect(...)` guard to begin with — it relies on `proxy.ts` having already guaranteed authentication. This matches the pre-existing `user!.id` pattern exactly, just swapping the identifier.)
+
+Also update the later JSX usage: `userId={user!.id}` → `userId={userId!}` (one occurrence, in the `<Header>` component). Add the `getCurrentUserId` import.
+
+- [ ] **Step 4: Apply the identical transformation to the remaining 9 files**
+
+For each of `app/(app)/customers/page.tsx`, `app/(app)/callbacks/page.tsx`, `app/(app)/followups/page.tsx`, `app/(app)/roster/page.tsx`, `app/(app)/admin/layout.tsx`, `app/(app)/admin/page.tsx`, `app/(app)/admin/agents/page.tsx`, `app/(app)/admin/escalations/page.tsx`, `app/(app)/admin/requests/page.tsx` — read the file first, then apply the same rule used in Steps 2-3:
+
+1. Add `import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'`.
+2. Replace `const { data: { user } } = await supabase.auth.getUser()` with `const userId = await getCurrentUserId(supabase)`.
+3. Replace every subsequent `user.id` with `userId` (if the file has an `if (!user) redirect(...)` or `if (!user)` guard before use, TypeScript narrows `userId` the same way it narrowed `user` — no `!` needed) or `user!.id` with `userId!` (if the file has no such guard, matching the file's existing non-null-assertion style — do not introduce a guard that wasn't there before, that's a behavior change outside this task's scope).
+4. Replace any `if (!user) redirect(...)` with `if (!userId) redirect(...)`.
+5. Leave everything else in each file completely untouched — this task changes nothing about queries, JSX structure, or business logic beyond the identifier swap.
+
+`app/(app)/admin/requests/page.tsx` and `app/(app)/roster/page.tsx` both have an explicit `if (!user) redirect('/login')` guard (so their downstream references are unguarded `user.id`, no `!`); the rest (`customers`, `callbacks`, `followups`, `admin/layout`, `admin/page`, `admin/agents`, `admin/escalations`) do not have that guard and use `user!.id` throughout (relying on `proxy.ts`) — read each file to confirm which pattern it uses before editing, don't assume.
+
+- [ ] **Step 5: Verify**
+
+Run: `npx tsc --noEmit` and `npm run lint` — expect no errors across all 11 modified files plus the new helper.
+Manual check: this is the first point in the plan where an Auth.js-authenticated user's dashboard load is actually possible to test meaningfully — but real end-to-end login still requires Task 11's user migration (to get a real `password_hash`) to be done first, so full verification is deferred to Task 12. For this task, confirm at minimum: `npm run dev`, log in via `/login/legacy` (still works, real Supabase Auth users exist), and click through every one of the 11 affected pages (dashboard, customers, callbacks, followups, roster, and — as admin — the 5 admin pages) confirming each loads without error. This exercises the helper's legacy-fallback branch on all 11 files, which is a real, meaningful regression check even though it doesn't yet prove the Auth.js branch (that needs Task 11 first).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add lib/auth/getCurrentUserId.ts "app/(app)/layout.tsx" "app/(app)/dashboard/page.tsx" "app/(app)/customers/page.tsx" "app/(app)/callbacks/page.tsx" "app/(app)/followups/page.tsx" "app/(app)/roster/page.tsx" "app/(app)/admin/layout.tsx" "app/(app)/admin/page.tsx" "app/(app)/admin/agents/page.tsx" "app/(app)/admin/escalations/page.tsx" "app/(app)/admin/requests/page.tsx"
+git commit -m "fix: stop calling supabase.auth.getUser() directly on pages, use getCurrentUserId helper"
+```
+
+---
+
 ### Task 8: Rewrite `app/api/admin/create-user/route.ts` — direct `profiles` insert, no more `auth.admin.createUser`
 
 **Files:**
