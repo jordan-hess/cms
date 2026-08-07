@@ -50,6 +50,14 @@ export default function LoginPage() {
     }
   }
 
+  async function handleMicrosoftLogin() {
+    setLoginError('')
+    await supabase.auth.signInWithOAuth({
+      provider: 'azure',
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    })
+  }
+
   async function handleSecurityVerify(e: React.FormEvent) {
     e.preventDefault()
     setFpError('')

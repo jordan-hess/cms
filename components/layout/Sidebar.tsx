@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation'
 import { Profile } from '@/types'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import Modal from '@/components/ui/Modal'
+import PatchNotesModal from '@/components/ui/PatchNotesModal'
 
 interface SidebarProps {
   profile: Profile
@@ -41,6 +42,7 @@ export default function Sidebar({ profile }: SidebarProps) {
   const supabase = createClient()
 
   const [modalOpen, setModalOpen] = useState(false)
+  const [patchNotesOpen, setPatchNotesOpen] = useState(false)
 
   const [profileForm, setProfileForm] = useState({ full_name: profile.full_name, email: profile.email })
   const [profileSaving, setProfileSaving] = useState(false)
@@ -201,8 +203,16 @@ export default function Sidebar({ profile }: SidebarProps) {
             <LogOut className="w-4 h-4" />
             Sign out
           </button>
+          <button
+            onClick={() => setPatchNotesOpen(true)}
+            className="w-full text-center text-xs text-gray-600 hover:text-gray-400 transition-colors pt-2"
+          >
+            v0.1.0
+          </button>
         </div>
       </div>
+
+      <PatchNotesModal open={patchNotesOpen} onClose={() => setPatchNotesOpen(false)} />
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="My Account">
         <div className="space-y-6">
