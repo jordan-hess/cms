@@ -33,7 +33,16 @@ export default async function AdminRequestsPage() {
       .eq('profile_id', userId),
     supabase
       .from('password_reset_requests')
-      .select('*, profiles(full_name, email)')
+      // profiles!password_reset_requests_profile_id_fkey disambiguates the
+      // embed: this table has two FKs to profiles (profile_id, reviewed_by),
+      // so an unqualified `profiles(...)` makes PostgREST return a 300
+      // "Could not embed because more than one relationship was found"
+      // error instead of rows. That error was going unchecked here (only
+      // `resetRequests ?? []` was applied below), so the page silently
+      // rendered "No pending reset requests" no matter how many actually
+      // existed — the admin approval UI (Task 9) was unreachable through
+      // the actual web UI even though the API route behind it worked fine.
+      .select('*, profiles!password_reset_requests_profile_id_fkey(full_name, email)')
       .eq('status', 'pending')
       .order('created_at', { ascending: true }),
   ])
