@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { createClient } from '@/lib/supabase/client'
+import { signIn } from 'next-auth/react'
 import { Loader2, ArrowLeft, CheckCircle, ShieldQuestion, UserCog } from 'lucide-react'
 
 type View = 'login' | 'fp-email' | 'fp-security' | 'fp-newpass' | 'fp-newpass-success' | 'fp-admin' | 'fp-admin-sent'
@@ -13,7 +13,6 @@ const errorCls = 'bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border
 
 export default function LoginPage() {
   const router = useRouter()
-  const supabase = createClient()
 
   // Login state
   const [email, setEmail] = useState('')
@@ -40,22 +39,14 @@ export default function LoginPage() {
     e.preventDefault()
     setLoginError('')
     setLoginLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) {
-      setLoginError(error.message)
+    const result = await signIn('credentials', { email, password, redirect: false })
+    if (result?.error) {
+      setLoginError('Invalid email or password.')
       setLoginLoading(false)
     } else {
       router.push('/dashboard')
       router.refresh()
     }
-  }
-
-  async function handleMicrosoftLogin() {
-    setLoginError('')
-    await supabase.auth.signInWithOAuth({
-      provider: 'azure',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    })
   }
 
   async function handleSecurityVerify(e: React.FormEvent) {
