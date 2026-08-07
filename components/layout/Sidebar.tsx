@@ -8,6 +8,7 @@ import {
   CalendarDays, Settings, Inbox, Pencil, Eye, EyeOff, Check,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Profile } from '@/types'
 import ThemeToggle from '@/components/ui/ThemeToggle'
@@ -64,7 +65,7 @@ export default function Sidebar({ profile }: SidebarProps) {
   }
 
   async function handleLogout() {
-    await supabase.auth.signOut()
+    await signOut({ redirect: false })
     router.push('/login')
     router.refresh()
   }
@@ -91,9 +92,14 @@ export default function Sidebar({ profile }: SidebarProps) {
     }
 
     if (updates.email) {
-      const { error } = await supabase.auth.updateUser({ email: updates.email })
-      if (error) { setProfileError(error.message); setProfileSaving(false); return }
-      setProfileSuccess('Profile updated. Check your new email address to confirm the change.')
+      const res = await fetch('/api/profile/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: updates.email }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setProfileError(data.error || 'Something went wrong.'); setProfileSaving(false); return }
+      setProfileSuccess('Profile updated successfully.')
     } else {
       setProfileSuccess('Profile updated successfully.')
     }
@@ -117,10 +123,15 @@ export default function Sidebar({ profile }: SidebarProps) {
     }
 
     setPwSaving(true)
-    const { error } = await supabase.auth.updateUser({ password: pwForm.password })
+    const res = await fetch('/api/profile/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwForm.password }),
+    })
+    const data = await res.json()
     setPwSaving(false)
 
-    if (error) { setPwError(error.message); return }
+    if (!res.ok) { setPwError(data.error || 'Something went wrong.'); return }
     setPwSuccess('Password updated successfully.')
     setPwForm({ password: '', confirm: '' })
   }

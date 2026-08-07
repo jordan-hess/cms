@@ -2,14 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { KeyRound, Eye, EyeOff, Check } from 'lucide-react'
 
 const inputCls = 'w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white'
 
 export default function ChangePasswordPage() {
   const router = useRouter()
-  const supabase = createClient()
 
   const [newPw, setNewPw] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -26,16 +24,16 @@ export default function ChangePasswordPage() {
 
     setSaving(true)
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
-
-    const { error: pwErr } = await supabase.auth.updateUser({ password: newPw })
-    if (pwErr) { setError(pwErr.message); setSaving(false); return }
-
-    // Clear the force_password_change flag
-    await supabase.from('profiles').update({ force_password_change: false }).eq('id', user.id)
-
+    const res = await fetch('/api/profile/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: newPw, clear_force_password_change: true }),
+    })
+    const data = await res.json()
     setSaving(false)
+
+    if (!res.ok) { setError(data.error || 'Something went wrong.'); return }
+
     setDone(true)
     setTimeout(() => router.push('/dashboard'), 1500)
   }
