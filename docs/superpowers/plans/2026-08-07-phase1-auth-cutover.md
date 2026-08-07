@@ -1173,11 +1173,16 @@ export async function POST(request: Request) {
   }
 
   const { error } = await adminClient.from('profiles').update(updates).eq('id', userId)
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  if (error) {
+    console.error('profile/update: failed to update profiles', error)
+    return NextResponse.json({ error: 'Server error.' }, { status: 500 })
+  }
 
   return NextResponse.json({ success: true })
 }
 ```
+
+(Note: return a fixed generic error message on DB failure, logging the real error server-side — do not return `error.message` directly to the client. Task 9's review found this exact pattern leaks Postgres internals — column names, constraint names, RLS hints — to the caller; keep this route consistent with the fix already applied there.)
 
 - [ ] **Step 2: Rewrite `Sidebar.tsx`'s `handleLogout`, `saveProfile`, and `changePassword`**
 
