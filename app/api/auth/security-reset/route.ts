@@ -1,11 +1,11 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { hashPassword } from '@/lib/auth/password'
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 
 const SECURITY_ANSWER = 'let it rain'
 
 async function respondPadded(body: unknown, status: number, startedAt: number) {
-  const MIN_MS = 1200
+  const MIN_MS = 2000
   const elapsed = Date.now() - startedAt
   if (elapsed < MIN_MS) await new Promise((r) => setTimeout(r, MIN_MS - elapsed))
   return NextResponse.json(body, { status })
@@ -79,8 +79,10 @@ export async function POST(request: Request) {
     // found-account path (bcrypt ~250ms), and return a generic success so
     // this endpoint never reveals whether an email is registered - matching
     // the policy in app/api/auth/request-password-reset/route.ts. The response
-    // is additionally padded to a constant floor below to mask the extra
-    // latency the found-account path incurs from the legacy Auth sync call.
+    // is additionally padded to a constant floor below to mask the residual
+    // latency delta from the found path's extra profiles.update() round trip
+    // (the legacy Auth sync call itself runs after the response via after(),
+    // so it no longer contributes to this delta at all).
     await hashPassword(new_password)
     return await respondPadded({ success: true }, 200, startedAt)
   }
@@ -93,8 +95,12 @@ export async function POST(request: Request) {
     .eq('id', matchedProfile.id)
 
   if (updateErr) {
+    // Log the real error for operators, but return the same generic padded
+    // response as the not-found case so a DB failure on this specific update
+    // can't be used as an account-existence oracle (a distinct 500 here is
+    // only reachable when the account was actually found).
     console.error('security-reset: failed to update profiles.password_hash', updateErr)
-    return NextResponse.json({ error: 'Server error.' }, { status: 500 })
+    return await respondPadded({ success: true }, 200, startedAt)
   }
 
   // Best-effort sync of the same password into the legacy Supabase Auth
@@ -102,14 +108,19 @@ export async function POST(request: Request) {
   // with the old (compromised) password during the dual-login grace window.
   // Not every profile has a corresponding auth.users row (e.g. users created
   // after the FK-drop migration), so a failure here must not fail the request.
-  try {
-    const { error: legacySyncErr } = await adminClient.auth.admin.updateUserById(matchedProfile.id, { password: new_password })
-    if (legacySyncErr) {
+  // Deferred via after() so this HTTP round-trip to GoTrue never blocks the
+  // response - it's a real, consistent latency delta that would otherwise
+  // recreate a found-vs-not-found timing oracle no matter how MIN_MS is tuned.
+  after(async () => {
+    try {
+      const { error: legacySyncErr } = await adminClient.auth.admin.updateUserById(matchedProfile.id, { password: new_password })
+      if (legacySyncErr) {
+        console.error('security-reset: failed to sync password to legacy Supabase Auth user', legacySyncErr)
+      }
+    } catch (legacySyncErr) {
       console.error('security-reset: failed to sync password to legacy Supabase Auth user', legacySyncErr)
     }
-  } catch (legacySyncErr) {
-    console.error('security-reset: failed to sync password to legacy Supabase Auth user', legacySyncErr)
-  }
+  })
 
   return await respondPadded({ success: true }, 200, startedAt)
 }
