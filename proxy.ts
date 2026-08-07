@@ -1,9 +1,9 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { auth } from '@/lib/auth/config'
+import { createClient } from '@/lib/supabase/server'
 
-export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
-
+async function getLegacySupabaseUser(request: NextRequest, response: NextResponse) {
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -12,32 +12,52 @@ export async function proxy(request: NextRequest) {
         getAll() { return request.cookies.getAll() },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
         },
       },
     }
   )
 
   const { data: { user } } = await supabase.auth.getUser()
+  return { supabase, user }
+}
+
+export async function proxy(request: NextRequest) {
+  const response = NextResponse.next({ request })
   const { pathname } = request.nextUrl
 
-  if (!user && pathname !== '/login' && !pathname.startsWith('/api/') && pathname !== '/auth/callback') {
+  const session = await auth()
+  let userId = session?.user?.id ?? null
+
+  // Grace-window fallback: accept a still-valid legacy Supabase session
+  // (see .superpowers/sdd/2026-08-07-phase1-auth-cutover, Task 7).
+  // Remove this whole branch once the grace window closes.
+  let legacySupabase: Awaited<ReturnType<typeof getLegacySupabaseUser>>['supabase'] | null = null
+  if (!userId) {
+    const legacy = await getLegacySupabaseUser(request, response)
+    if (legacy.user) {
+      userId = legacy.user.id
+      legacySupabase = legacy.supabase
+    }
+  }
+
+  if (!userId && pathname !== '/login' && !pathname.startsWith('/api/') && pathname !== '/auth/callback') {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  if (user && pathname === '/login') {
+  if (userId && pathname === '/login') {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
-  // For authenticated non-API requests, check force_password_change and role
-  if (user && !pathname.startsWith('/api/') && pathname !== '/change-password') {
-    const { data: profile } = await supabase
+  if (userId && !pathname.startsWith('/api/') && pathname !== '/change-password') {
+    // Reuse the already-authenticated legacy client when the fallback path matched;
+    // otherwise fall back to the Auth.js-backed Supabase client (Task 3).
+    const client = legacySupabase ?? await createClient()
+
+    const { data: profile } = await client
       .from('profiles')
       .select('role, force_password_change')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single()
 
     if (profile?.force_password_change) {
@@ -49,7 +69,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  return supabaseResponse
+  return response
 }
 
 export const config = {
