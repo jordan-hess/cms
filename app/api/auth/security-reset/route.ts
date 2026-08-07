@@ -78,12 +78,28 @@ export async function POST(request: Request) {
     // Hash a dummy value to keep response timing consistent with the
     // found-account path (bcrypt ~250ms), and return a generic success so
     // this endpoint never reveals whether an email is registered - matching
-    // the policy in app/api/auth/request-password-reset/route.ts. The response
-    // is additionally padded to a constant floor below to mask the residual
-    // latency delta from the found path's extra profiles.update() round trip
-    // (the legacy Auth sync call itself runs after the response via after(),
-    // so it no longer contributes to this delta at all).
-    await hashPassword(new_password)
+    // the policy in app/api/auth/request-password-reset/route.ts.
+    const dummyHash = await hashPassword(new_password)
+
+    // Perform a throwaway update that structurally mirrors the found path's
+    // real profiles.update() so both branches do identical work (one hash +
+    // one select + one update). The target id is the all-zero UUID, which can
+    // never be a real profiles.id (every real id comes from randomUUID()), so
+    // this matches zero rows and has no side effect - but Postgres/PostgREST
+    // still pays the same query-planning, policy-evaluation and network
+    // round-trip cost as the real update. Without this, the found branch's
+    // *unpadded* latency is structurally higher than not-found's, and the
+    // padding floor below would be a constant fitted to one machine's observed
+    // gap - which reopens the timing oracle as soon as production latency
+    // pushes the found branch past the floor while not-found stays under it.
+    // Purely for timing symmetry: the result is deliberately ignored, and a
+    // failure here must never affect the response.
+    await adminClient
+      .from('profiles')
+      .update({ password_hash: dummyHash, force_password_change: false })
+      .eq('id', '00000000-0000-0000-0000-000000000000')
+      .then(() => {}, () => {})
+
     return await respondPadded({ success: true }, 200, startedAt)
   }
 
