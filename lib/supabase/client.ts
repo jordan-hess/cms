@@ -1,21 +1,36 @@
 import { createBrowserClient } from '@supabase/ssr'
+import { TOKEN_LIFETIME_MS, REFRESH_BUFFER_MS } from '@/lib/auth/supabase-token-constants'
 
 let cachedToken: { value: string; expiresAt: number } | null = null
+let pending: Promise<string | null> | null = null
 
 async function getAccessToken(): Promise<string | null> {
-  if (cachedToken && cachedToken.expiresAt > Date.now() + 10_000) {
+  if (cachedToken && cachedToken.expiresAt > Date.now() + REFRESH_BUFFER_MS) {
     return cachedToken.value
   }
 
-  const res = await fetch('/api/auth/supabase-token')
-  if (!res.ok) {
-    cachedToken = null
-    return null
-  }
+  if (pending) return pending
 
-  const { token } = await res.json()
-  cachedToken = { value: token, expiresAt: Date.now() + 5 * 60 * 1000 }
-  return token
+  pending = (async () => {
+    try {
+      const res = await fetch('/api/auth/supabase-token')
+      if (!res.ok) {
+        cachedToken = null
+        return null
+      }
+
+      const { token } = await res.json()
+      cachedToken = { value: token, expiresAt: Date.now() + TOKEN_LIFETIME_MS }
+      return token
+    } catch {
+      cachedToken = null
+      return null
+    } finally {
+      pending = null
+    }
+  })()
+
+  return pending
 }
 
 export function createClient() {
