@@ -32,7 +32,11 @@ export default function ChangePasswordPage() {
     const data = await res.json()
     setSaving(false)
 
-    if (!res.ok) { setError(data.error || 'Something went wrong.'); return }
+    if (!res.ok) {
+      if (res.status === 401) { router.push('/login'); return }
+      setError(data.error || 'Something went wrong.')
+      return
+    }
 
     setDone(true)
     setTimeout(() => router.push('/dashboard'), 1500)

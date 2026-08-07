@@ -8,6 +8,7 @@ import {
   CalendarDays, Settings, Inbox, Pencil, Eye, EyeOff, Check,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { createLegacyAuthClient } from '@/lib/supabase/legacyAuthClient'
 import { signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Profile } from '@/types'
@@ -66,6 +67,13 @@ export default function Sidebar({ profile }: SidebarProps) {
 
   async function handleLogout() {
     await signOut({ redirect: false })
+    // Also sign out of the legacy Supabase-Auth session (grace-window fallback,
+    // see lib/supabase/legacyAuthClient.ts): next-auth's signOut() only clears
+    // the Auth.js cookie, so a legacy-session user would otherwise stay fully
+    // authenticated via proxy.ts's legacy fallback. Safe to call unconditionally
+    // even when there's no legacy session active - it just no-ops locally.
+    const legacyClient = createLegacyAuthClient()
+    await legacyClient.auth.signOut()
     router.push('/login')
     router.refresh()
   }
@@ -249,7 +257,6 @@ export default function Sidebar({ profile }: SidebarProps) {
                 onChange={e => setProfileForm(f => ({ ...f, email: e.target.value }))}
                 className={inputCls}
               />
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Changing your email will send a confirmation to the new address.</p>
             </div>
             {profileError && <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/30 rounded-lg px-3 py-2">{profileError}</p>}
             {profileSuccess && (
