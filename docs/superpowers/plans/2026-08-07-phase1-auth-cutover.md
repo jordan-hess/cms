@@ -901,7 +901,7 @@ git commit -m "fix: stop calling supabase.auth.getUser() directly on pages, use 
 - Modify: `app/api/admin/create-user/route.ts`
 
 **Interfaces:**
-- Consumes: `hashPassword` from `lib/auth/password.ts` (Task 1); `createClient` from `@/lib/supabase/server` (Task 3, for the caller's own auth check — unchanged usage pattern).
+- Consumes: `hashPassword` from `lib/auth/password.ts` (Task 1); `createClient` from `@/lib/supabase/server` (Task 3); `getCurrentUserId` from `@/lib/auth/getCurrentUserId` (Task 7.5 — **use this, not a raw `auth()` call**, so a legacy-session admin during the grace window can still use this route, not just an Auth.js-session admin).
 - Produces: no new exports; this route's request/response shape (`POST` with `{ email, full_name, password, role, department }`, returns `{ success: true }` or `{ error }`) is unchanged, so no caller elsewhere needs updating.
 
 - [ ] **Step 1: Rewrite the route**
@@ -913,12 +913,12 @@ import { randomUUID } from 'crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { hashPassword } from '@/lib/auth/password'
+import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
-  const session = await import('@/lib/auth/config').then(m => m.auth())
-  const userId = session?.user?.id
+  const userId = await getCurrentUserId(supabase)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).single()
@@ -957,8 +957,6 @@ export async function POST(request: Request) {
 }
 ```
 
-Note: the `await import('@/lib/auth/config').then(...)` dance for `auth()` is deliberate here — a plain top-level `import { auth } from '@/lib/auth/config'` would work equally well and is preferred; use that instead (`import { auth } from '@/lib/auth/config'` alongside the existing imports, then `const session = await auth()`). The dynamic-import form above is only there to make the dependency explicit in this plan text; do not transcribe it literally — use the static import.
-
 - [ ] **Step 2: Verify**
 
 Run: `npx tsc --noEmit` and `npm run lint` — expect no errors.
@@ -980,7 +978,7 @@ git commit -m "feat: rewrite create-user route to insert profiles directly with 
 - Modify: `app/api/auth/security-reset/route.ts`
 
 **Interfaces:**
-- Consumes: `hashPassword` from `lib/auth/password.ts` (Task 1).
+- Consumes: `hashPassword` from `lib/auth/password.ts` (Task 1); `getCurrentUserId` from `@/lib/auth/getCurrentUserId` (Task 7.5 — use this in `review-password-reset`, not a raw `auth()` call, so a legacy-session admin can still use it).
 - Produces: no new exports; both routes' request/response shapes are unchanged. `app/api/auth/request-password-reset/route.ts` needs **no changes at all** — it never called `.auth.admin.*`, confirmed by reading its current contents; do not touch it in this task.
 
 - [ ] **Step 1: Rewrite `review-password-reset`**
@@ -990,7 +988,7 @@ Replace the full contents of `app/api/admin/review-password-reset/route.ts` with
 ```ts
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { auth } from '@/lib/auth/config'
+import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import { hashPassword } from '@/lib/auth/password'
 import { NextResponse } from 'next/server'
 
@@ -1003,8 +1001,7 @@ function generateTempPassword(): string {
 
 export async function POST(request: Request) {
   const supabase = await createClient()
-  const session = await auth()
-  const userId = session?.user?.id
+  const userId = await getCurrentUserId(supabase)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: reviewer } = await supabase.from('profiles').select('role').eq('id', userId).single()
@@ -1138,7 +1135,7 @@ git commit -m "feat: rewrite password-reset routes to update profiles.password_h
 - Create: `app/api/profile/update/route.ts`
 
 **Interfaces:**
-- Consumes: `signOut` from `next-auth/react` (client-side); `hashPassword` from `lib/auth/password.ts`; `auth` from `lib/auth/config.ts`.
+- Consumes: `signOut` from `next-auth/react` (client-side); `hashPassword` from `lib/auth/password.ts`; `createClient` from `@/lib/supabase/server` and `getCurrentUserId` from `@/lib/auth/getCurrentUserId` (Task 7.5 — use this, not a raw `auth()` call, so a legacy-session user can still change their own password during the grace window).
 - Produces: `POST /api/profile/update` accepting `{ full_name?: string, email?: string, password?: string }` for the authenticated user, returns `{ success: true }` or `{ error }`. Both modified pages call this new route instead of `supabase.auth.updateUser(...)`.
 
 - [ ] **Step 1: Add the profile-update route**
@@ -1146,14 +1143,15 @@ git commit -m "feat: rewrite password-reset routes to update profiles.password_h
 Create `app/api/profile/update/route.ts`:
 
 ```ts
-import { auth } from '@/lib/auth/config'
+import { createClient } from '@/lib/supabase/server'
+import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import { hashPassword } from '@/lib/auth/password'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
-  const session = await auth()
-  const userId = session?.user?.id
+  const supabase = await createClient()
+  const userId = await getCurrentUserId(supabase)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { full_name, email, password, clear_force_password_change } = await request.json()
