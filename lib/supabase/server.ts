@@ -1,21 +1,17 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js'
+import { auth } from '@/lib/auth/config'
+import { mintSupabaseCompatibleJWT } from '@/lib/auth/jwt'
 
-export async function createClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
+export async function createClient(): Promise<SupabaseClient> {
+  return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {}
-        },
+      accessToken: async () => {
+        const session = await auth()
+        const userId = session?.user?.id
+        if (!userId) return null
+        return mintSupabaseCompatibleJWT(userId, { email: session?.user?.email ?? undefined })
       },
     }
   )
