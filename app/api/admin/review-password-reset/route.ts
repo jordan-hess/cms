@@ -27,6 +27,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
   }
 
+  if (typeof body !== 'object' || body === null) {
+    return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
+  }
+
   const { request_id, action } = body as { request_id?: unknown; action?: unknown }
   if (typeof request_id !== 'string' || !['approve', 'reject'].includes(action as string)) {
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
