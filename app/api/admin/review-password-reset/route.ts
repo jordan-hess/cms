@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
+import { hashPassword } from '@/lib/auth/password'
 import { NextResponse } from 'next/server'
 
 function generateTempPassword(): string {
@@ -11,10 +13,10 @@ function generateTempPassword(): string {
 
 export async function POST(request: Request) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const userId = await getCurrentUserId(supabase)
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: reviewer } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const { data: reviewer } = await supabase.from('profiles').select('role').eq('id', userId).single()
   if (reviewer?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { request_id, action } = await request.json()
@@ -28,7 +30,6 @@ export async function POST(request: Request) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
 
-  // Fetch the reset request with the profile's auth user id
   const { data: resetReq, error: fetchErr } = await adminClient
     .from('password_reset_requests')
     .select('id, profile_id, status')
@@ -41,26 +42,25 @@ export async function POST(request: Request) {
   if (action === 'reject') {
     await adminClient.from('password_reset_requests').update({
       status: 'rejected',
-      reviewed_by: user.id,
+      reviewed_by: userId,
       reviewed_at: new Date().toISOString(),
     }).eq('id', request_id)
     return NextResponse.json({ success: true })
   }
 
-  // Approve: generate temp password, update auth user, set force_password_change
   const tempPassword = generateTempPassword()
+  const password_hash = await hashPassword(tempPassword)
 
-  // Find the auth user id (profile id = auth user id in Supabase)
-  const { error: pwErr } = await adminClient.auth.admin.updateUserById(resetReq.profile_id, {
-    password: tempPassword,
-  })
+  const { error: pwErr } = await adminClient
+    .from('profiles')
+    .update({ password_hash, force_password_change: true })
+    .eq('id', resetReq.profile_id)
+
   if (pwErr) return NextResponse.json({ error: pwErr.message }, { status: 500 })
-
-  await adminClient.from('profiles').update({ force_password_change: true }).eq('id', resetReq.profile_id)
 
   await adminClient.from('password_reset_requests').update({
     status: 'approved',
-    reviewed_by: user.id,
+    reviewed_by: userId,
     reviewed_at: new Date().toISOString(),
   }).eq('id', request_id)
 
