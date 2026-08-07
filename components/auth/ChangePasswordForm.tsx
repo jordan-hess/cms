@@ -25,48 +25,61 @@ export default function ChangePasswordForm({ email }: { email: string }) {
 
     setSaving(true)
 
-    const res = await fetch('/api/profile/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: newPw, clear_force_password_change: true }),
-    })
-    const data = await res.json()
+    try {
+      const res = await fetch('/api/profile/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: newPw, clear_force_password_change: true }),
+      })
+      const data = await res.json()
 
-    if (!res.ok) {
+      if (!res.ok) {
+        setSaving(false)
+        if (res.status === 401) { router.push('/login'); return }
+        setError(data.error || 'Something went wrong.')
+        return
+      }
+
+      // The profile update above best-effort-syncs this same new password into
+      // the legacy Supabase Auth credential (see app/api/profile/update/route.ts).
+      // That sync goes through Supabase's admin.updateUserById, which — per
+      // GoTrue's own behavior — immediately invalidates the *current* Supabase
+      // session's access token. For a user who reached this page via the
+      // /login/legacy grace-window path (exactly the case Task 11's migrated
+      // accounts hit on their first login), that means the legacy session they
+      // were relying on to reach /dashboard next is dead by the time this
+      // request resolves — proxy.ts would see no valid session at all and bounce
+      // them to /login instead of /dashboard, right after telling them their
+      // password was updated. Establishing a fresh Auth.js session here with the
+      // password we just made valid (profiles.password_hash) sidesteps that
+      // entirely, regardless of which login path the user arrived from.
+      const signInResult = await signIn('credentials', { email, password: newPw, redirect: false })
       setSaving(false)
-      if (res.status === 401) { router.push('/login'); return }
-      setError(data.error || 'Something went wrong.')
-      return
-    }
 
-    // The profile update above best-effort-syncs this same new password into
-    // the legacy Supabase Auth credential (see app/api/profile/update/route.ts).
-    // That sync goes through Supabase's admin.updateUserById, which — per
-    // GoTrue's own behavior — immediately invalidates the *current* Supabase
-    // session's access token. For a user who reached this page via the
-    // /login/legacy grace-window path (exactly the case Task 11's migrated
-    // accounts hit on their first login), that means the legacy session they
-    // were relying on to reach /dashboard next is dead by the time this
-    // request resolves — proxy.ts would see no valid session at all and bounce
-    // them to /login instead of /dashboard, right after telling them their
-    // password was updated. Establishing a fresh Auth.js session here with the
-    // password we just made valid (profiles.password_hash) sidesteps that
-    // entirely, regardless of which login path the user arrived from.
-    const signInResult = await signIn('credentials', { email, password: newPw, redirect: false })
-    setSaving(false)
+      if (signInResult?.error) {
+        // Extremely unlikely (we just set this exact password hash moments ago),
+        // but fail safe to a manual re-login rather than a silent dead end.
+        setError('Password was updated, but automatic sign-in failed. Please sign in with your new password.')
+        setTimeout(() => router.push('/login'), 2000)
+        return
+      }
 
-    if (signInResult?.error) {
-      // Extremely unlikely (we just set this exact password hash moments ago),
-      // but fail safe to a manual re-login rather than a silent dead end.
+      setDone(true)
+      setTimeout(() => {
+        window.location.href = '/dashboard'
+      }, 1500)
+    } catch {
+      // The password update itself may well have already succeeded server-side
+      // by the time signIn() (or, less likely, the fetch above) throws instead
+      // of resolving normally -- e.g. a network blip, or next-auth's client
+      // throwing on an unexpected response shape. Without this catch, setSaving
+      // would never run again and the button would be stuck on "Saving..."
+      // forever with no indication that the password was in fact already
+      // changed. Fail safe the same way a returned signInResult.error does.
+      setSaving(false)
       setError('Password was updated, but automatic sign-in failed. Please sign in with your new password.')
       setTimeout(() => router.push('/login'), 2000)
-      return
     }
-
-    setDone(true)
-    setTimeout(() => {
-      window.location.href = '/dashboard'
-    }, 1500)
   }
 
   return (

@@ -24,7 +24,14 @@ export default async function AdminDashboardPage() {
     supabase.from('customers').select('id'),
     supabase.from('team_leaders').select('team_id').eq('profile_id', userId!),
     supabase.from('requests').select('id, status, type, team_id').eq('status', 'pending'),
-    supabase.from('password_reset_requests').select('*, profiles(full_name, email)').eq('status', 'pending').order('created_at', { ascending: true }),
+    // profiles!password_reset_requests_profile_id_fkey disambiguates the embed:
+    // this table has two FKs to profiles (profile_id, reviewed_by), so an
+    // unqualified `profiles(...)` makes PostgREST return a 300 "Could not embed
+    // because more than one relationship was found" error instead of rows.
+    // Same bug, same fix, as app/(app)/admin/requests/page.tsx's identical query
+    // (Task 12 QA fix round 1) — this copy on the Admin Dashboard was missed
+    // during the first pass because that pass only exercised /admin/requests.
+    supabase.from('password_reset_requests').select('*, profiles!password_reset_requests_profile_id_fkey(full_name, email)').eq('status', 'pending').order('created_at', { ascending: true }),
   ])
 
   const pendingCallbacks = allCallbacks?.filter(c => c.status === 'pending') || []
