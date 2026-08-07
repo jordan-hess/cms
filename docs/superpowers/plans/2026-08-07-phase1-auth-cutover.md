@@ -478,18 +478,130 @@ git commit -m "feat: switch login page's password path to Auth.js signIn"
 
 ---
 
-### Task 7: Legacy login page (dual-login grace window)
+### Task 7: Legacy login page + data-access fallback (dual-login grace window)
+
+**Amended after Task 5's review.** The review caught a load-bearing gap: `proxy.ts`'s legacy-session fallback (Task 5) only affects the *gate* — it decides who gets past `proxy.ts` — but `lib/supabase/server.ts` and `lib/supabase/client.ts` (Tasks 3-4) mint their Supabase-compatible tokens *only* from an Auth.js session. A legacy-session user would pass the gate and then get an anon-role client for every actual data query (every RLS policy in this project is `TO authenticated`, never `TO anon`), landing on a fully broken, empty app — defeating the entire purpose of the grace window. This task now also extends both client factories with the same legacy-session fallback `proxy.ts` already has, so a legacy-session user gets a real, working, authenticated data client too, not just past the gate.
 
 **Files:**
 - Create: `lib/supabase/legacyAuthClient.ts`
 - Create: `app/login/legacy/page.tsx`
 - Modify: `app/login/page.tsx` (add a link to the legacy page)
+- Modify: `lib/supabase/server.ts` (add legacy-session fallback alongside the Task 3 Auth.js path)
+- Modify: `app/api/auth/supabase-token/route.ts` (add legacy-session fallback alongside the Task 4 Auth.js path)
 
 **Interfaces:**
-- Consumes: nothing new — `createBrowserClient` from `@supabase/ssr` directly (bypassing the Task 4 `accessToken`-wrapped client entirely, since legacy login needs Supabase's own native `.auth` namespace, which the wrapped client disables).
-- Produces: `createLegacyAuthClient(): SupabaseClient` from `lib/supabase/legacyAuthClient.ts`. No other task depends on this — it exists solely for the grace window and is deleted entirely once the grace window closes (a follow-up step outside this plan).
+- Consumes: nothing new for the login page itself — `createBrowserClient` from `@supabase/ssr` directly (bypassing the Task 4 `accessToken`-wrapped client entirely, since legacy login needs Supabase's own native `.auth` namespace, which the wrapped client disables). The server/route fallback additions consume `createServerClient` from `@supabase/ssr` and `cookies` from `next/headers`, mirroring `proxy.ts`'s own fallback pattern from Task 5.
+- Produces: `createLegacyAuthClient(): SupabaseClient` from `lib/supabase/legacyAuthClient.ts`. `lib/supabase/server.ts`'s `createClient()` keeps its exact signature (`Promise<SupabaseClient>`, no arguments) — still zero changes needed in any of its ~15 callers. `app/api/auth/supabase-token/route.ts`'s response shape (`{ token }` or `{ error }`, same status codes) is unchanged — `lib/supabase/client.ts` (Task 4) needs no changes at all, since from its perspective it's still just fetching a token string from the same route.
 
-- [ ] **Step 1: Add the legacy client factory**
+- [ ] **Step 1: Extend `lib/supabase/server.ts` with a legacy-session fallback**
+
+Replace the full contents of `lib/supabase/server.ts` with:
+
+```ts
+import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { auth } from '@/lib/auth/config'
+import { mintSupabaseCompatibleJWT } from '@/lib/auth/jwt'
+
+export async function createClient(): Promise<SupabaseClient> {
+  const session = await auth()
+
+  if (!session?.user?.id) {
+    // Grace-window fallback: no Auth.js session — check for a still-valid
+    // legacy Supabase session (mirrors proxy.ts's own fallback from Task 5).
+    // If found, return a client using it directly (it already carries a
+    // real, valid Supabase-issued token) instead of falling through to an
+    // anon-role client that RLS would silently deny everything to.
+    const cookieStore = await cookies()
+    const legacyClient = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll() },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+            } catch {}
+          },
+        },
+      }
+    )
+    const { data: { user } } = await legacyClient.auth.getUser()
+    if (user) return legacyClient
+  }
+
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      accessToken: async () => {
+        const s = await auth()
+        const userId = s?.user?.id
+        if (!userId) return null
+        return mintSupabaseCompatibleJWT(userId, { email: s.user.email ?? undefined })
+      },
+    }
+  )
+}
+```
+
+Note: `auth()` is called once upfront to decide which branch to take, and again inside the `accessToken` callback (matching Task 3's original design, where the callback re-derives the session fresh each time it's invoked — Supabase may call `accessToken` multiple times per request/session lifetime, so it must stay self-sufficient rather than close over a possibly-stale outer variable). This is a minor, acceptable redundancy, not a bug.
+
+- [ ] **Step 2: Extend `app/api/auth/supabase-token/route.ts` with the matching fallback**
+
+Replace the full contents of `app/api/auth/supabase-token/route.ts` with:
+
+```ts
+import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
+import { auth } from '@/lib/auth/config'
+import { mintSupabaseCompatibleJWT } from '@/lib/auth/jwt'
+import { TOKEN_LIFETIME_SECONDS } from '@/lib/auth/supabase-token-constants'
+
+export async function GET() {
+  const session = await auth()
+  const userId = session?.user?.id
+
+  if (userId) {
+    const token = await mintSupabaseCompatibleJWT(userId, {
+      email: session.user.email ?? undefined,
+      expiresInSeconds: TOKEN_LIFETIME_SECONDS,
+    })
+    return NextResponse.json({ token })
+  }
+
+  // Grace-window fallback: a still-valid legacy Supabase session's own
+  // access token already works as-is — no minting needed.
+  const cookieStore = await cookies()
+  const legacyClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll() },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+          } catch {}
+        },
+      },
+    }
+  )
+  const { data: { session: legacySession } } = await legacyClient.auth.getSession()
+  if (legacySession?.access_token) {
+    return NextResponse.json({ token: legacySession.access_token })
+  }
+
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+}
+```
+
+(`lib/auth/supabase-token-constants.ts` already exists from Task 4's fix round — import `TOKEN_LIFETIME_SECONDS` from it, do not redefine `300` inline.)
+
+- [ ] **Step 3: Add the legacy client factory**
 
 Create `lib/supabase/legacyAuthClient.ts`:
 
@@ -508,7 +620,7 @@ export function createLegacyAuthClient() {
 }
 ```
 
-- [ ] **Step 2: Add the legacy login page**
+- [ ] **Step 4: Add the legacy login page**
 
 Create `app/login/legacy/page.tsx`:
 
@@ -578,7 +690,7 @@ export default function LegacyLoginPage() {
 }
 ```
 
-- [ ] **Step 3: Add a proxy.ts exemption for the new public route**
+- [ ] **Step 5: Add a proxy.ts exemption for the new public route**
 
 `proxy.ts`'s public-path check (Task 5) currently allows `/login`, `/api/*`, `/auth/callback`. Add `/login/legacy` to that list — edit the condition in `proxy.ts` from:
 
@@ -592,7 +704,7 @@ to:
 if (!userId && pathname !== '/login' && pathname !== '/login/legacy' && !pathname.startsWith('/api/') && pathname !== '/auth/callback') {
 ```
 
-- [ ] **Step 4: Add a small link from the main login page**
+- [ ] **Step 6: Add a small link from the main login page**
 
 In `app/login/page.tsx`, near the footer text (`"Contact your administrator to get access"`), add:
 
@@ -604,16 +716,16 @@ In `app/login/page.tsx`, near the footer text (`"Contact your administrator to g
 
 Add `import Link from 'next/link'` if not already imported (it is not, per the current file's imports — check before assuming).
 
-- [ ] **Step 5: Verify**
+- [ ] **Step 7: Verify**
 
 Run: `npx tsc --noEmit` and `npm run lint` — expect no errors.
-Manual check: `npm run dev`, go to `/login/legacy`, sign in with `agent@carecms.local` / `Agent123!` (still a valid Supabase Auth user at this point — nothing has touched Supabase Auth users yet). Confirm you land on `/dashboard` successfully. Then confirm data actually loads on the dashboard (stat cards, panels) — this is the first real end-to-end proof that `proxy.ts`'s legacy fallback path (Task 5) works correctly. Report exact observations.
+Manual check: `npm run dev`, go to `/login/legacy`, sign in with `agent@carecms.local` / `Agent123!` (still a valid Supabase Auth user at this point — nothing has touched Supabase Auth users yet). Confirm you land on `/dashboard` successfully, AND confirm data actually loads on the dashboard (stat cards, panels) — this is the real end-to-end proof that BOTH `proxy.ts`'s legacy fallback (Task 5) AND the Step 1-2 data-access fallback added in this task work correctly together. Before this task's Step 1-2 additions, this exact check would have shown an empty/broken dashboard despite a successful-looking login — confirm that is no longer the case.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add lib/supabase/legacyAuthClient.ts "app/login/legacy/page.tsx" app/login/page.tsx proxy.ts
-git commit -m "feat: add legacy login page as dual-login grace-window rollback path"
+git add lib/supabase/server.ts "app/api/auth/supabase-token/route.ts" lib/supabase/legacyAuthClient.ts "app/login/legacy/page.tsx" app/login/page.tsx proxy.ts
+git commit -m "feat: add legacy login page and extend data-access clients with legacy-session fallback"
 ```
 
 ---
