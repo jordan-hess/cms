@@ -272,3 +272,30 @@ export interface RequestWithDetail extends Request {
   leave_requests?: LeaveRequest[]
   overtime_requests?: (OvertimeRequest & { overtime_entries?: OvertimeEntry[] })[]
 }
+
+// ─── Coaching ─────────────────────────────────────────────────────────────────
+
+export interface CoachingAgentCheckin {
+  id: string
+  profile_id: string
+  period_month: string   // 'YYYY-MM-DD', always the 1st of the month
+  done: boolean
+  completed_at: string | null
+  marked_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type CoachingLeaderCheckin = CoachingAgentCheckin
+
+/** Computed client-side card view-model, one per unique team leader */
+export interface CoachingLeaderCard {
+  leaderId: string
+  leaderName: string
+  leaderDepartment: string | null
+  teamIds: string[]
+  agents: { id: string; full_name: string; done: boolean }[]
+  completedCount: number
+  totalCount: number
+  leaderCheckinDone: boolean
+}

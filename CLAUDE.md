@@ -27,8 +27,9 @@ No test suite is configured.
 1. Run `supabase/schema.sql` in the Supabase SQL Editor.
 2. Run `supabase/fix-auth-trigger.sql` in the SQL Editor (repairs the auth trigger so user creation also creates a profile row — required before any users can be created).
 3. Run `supabase/roster-schema.sql` in the SQL Editor (creates teams, shift_templates, team_rotations, team_members, attendance_records, roster_overrides tables and seeds the four default teams: Green, Blue, Red, Yellow).
-4. Copy `.env.local.example` → `.env.local` and fill in the three env vars.
-5. Run `npm run setup:users` to create `admin@carecms.local / Admin123!`, `agent@carecms.local / Agent123!`, and `management-dev@carecms.local / Management123!`.
+4. Run `supabase/team-leaders-schema.sql`, then `supabase/coaching-schema.sql` (creates `coaching_agent_checkins`/`coaching_leader_checkins` for the management-only Coaching page).
+5. Copy `.env.local.example` → `.env.local` and fill in the env vars.
+6. Run `npm run setup:users` to create `admin@carecms.local / Admin123!`, `agent@carecms.local / Agent123!`, and `management-dev@carecms.local / Management123!`.
 
 Note: existing/already-deployed databases that ran `schema.sql` before the `management` role was added need to separately run `supabase/add-management-role.sql` once (fresh installs already get the `management` role from step 1 above).
 
@@ -103,6 +104,10 @@ Role checks happen at three levels — all three must stay consistent:
 Core tables: `profiles`, `customers`, `callbacks`, `followups`, `notifications` — defined in `supabase/schema.sql`.
 
 Roster tables: `teams`, `team_members`, `shift_templates`, `team_rotations`, `attendance_records`, `roster_overrides` — defined in `supabase/roster-schema.sql`; TypeScript types in `types/index.ts`.
+
+Team-leader tables: `team_leaders` — defined in `supabase/team-leaders-schema.sql` (one leader per team, must be an `admin`-role profile).
+
+Coaching tables (management-only feature): `coaching_agent_checkins` (team-leader↔agent 1-on-1 completion), `coaching_leader_checkins` (management↔team-leader check-in completion) — both keyed per `profile_id` + `period_month`, defined in `supabase/coaching-schema.sql`.
 
 Foreign key joins use Supabase's inline select syntax:
 ```ts

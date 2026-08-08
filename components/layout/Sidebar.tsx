@@ -5,13 +5,13 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Users, Phone, FileText, ShieldAlert, LogOut, UserCog,
-  CalendarDays, Settings, Inbox, Pencil, Eye, EyeOff, Check,
+  CalendarDays, Settings, Inbox, Pencil, Eye, EyeOff, Check, Handshake,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { createLegacyAuthClient } from '@/lib/supabase/legacyAuthClient'
 import { signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { Profile } from '@/types'
+import { Profile, Role } from '@/types'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import Modal from '@/components/ui/Modal'
 import PatchNotesModal from '@/components/ui/PatchNotesModal'
@@ -20,13 +20,17 @@ interface SidebarProps {
   profile: Profile
 }
 
-const agentLinks = [
-  { href: '/dashboard', label: 'Dashboard',   icon: LayoutDashboard },
-  { href: '/customers', label: 'Customers',   icon: Users           },
-  { href: '/callbacks', label: 'Callbacks',   icon: Phone           },
-  { href: '/followups', label: 'Follow-ups',  icon: FileText        },
-  { href: '/roster',    label: 'Team Roster', icon: CalendarDays    },
-]
+function getPrimaryLinks(role: Role) {
+  return [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    role === 'management'
+      ? { href: '/coaching', label: 'Coaching', icon: Handshake }
+      : { href: '/customers', label: 'Customers', icon: Users },
+    { href: '/callbacks', label: 'Callbacks', icon: Phone },
+    { href: '/followups', label: 'Follow-ups', icon: FileText },
+    { href: '/roster', label: 'Team Roster', icon: CalendarDays },
+  ]
+}
 
 const adminLinks = [
   { href: '/admin',              label: 'Admin Dashboard', icon: ShieldAlert },
@@ -156,7 +160,7 @@ export default function Sidebar({ profile }: SidebarProps) {
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {agentLinks.map(({ href, label, icon: Icon }) => (
+          {getPrimaryLinks(profile.role).map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
