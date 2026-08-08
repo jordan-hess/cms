@@ -2,7 +2,7 @@
 
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Pencil, UserX } from 'lucide-react'
+import { Pencil, UserMinus } from 'lucide-react'
 import { Profile } from '@/types'
 
 type PersonLite = Pick<Profile, 'id' | 'full_name' | 'email' | 'role' | 'department' | 'is_active'>
@@ -11,10 +11,10 @@ interface Props {
   person: PersonLite
   isLeader: boolean
   onEdit: (person: PersonLite) => void
-  onDeactivate: (personId: string) => void
+  onRemove: (personId: string) => void
 }
 
-export default function PersonCard({ person, isLeader, onEdit, onDeactivate }: Props) {
+export default function PersonCard({ person, isLeader, onEdit, onRemove }: Props) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: person.id,
     data: { personId: person.id, role: person.role },
@@ -42,8 +42,8 @@ export default function PersonCard({ person, isLeader, onEdit, onDeactivate }: P
       <button type="button" onClick={() => onEdit(person)} className="p-1 text-gray-400 hover:text-blue-600 shrink-0">
         <Pencil className="w-3.5 h-3.5" />
       </button>
-      <button type="button" onClick={() => onDeactivate(person.id)} className="p-1 text-gray-400 hover:text-red-600 shrink-0">
-        <UserX className="w-3.5 h-3.5" />
+      <button type="button" onClick={() => onRemove(person.id)} className="p-1 text-gray-400 hover:text-red-600 shrink-0" title="Remove from team">
+        <UserMinus className="w-3.5 h-3.5" />
       </button>
     </div>
   )

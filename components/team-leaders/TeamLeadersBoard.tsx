@@ -8,6 +8,7 @@ import { Team, TeamMember, TeamLeader, Profile, Role, TeamBoardColumn } from '@/
 import TeamColumn from './TeamColumn'
 import EditPersonModal from './EditPersonModal'
 import AddToTeamModal from './AddToTeamModal'
+import AddTeamLeaderModal from './AddTeamLeaderModal'
 
 type ProfileLite = Pick<Profile, 'id' | 'full_name' | 'email' | 'role' | 'department' | 'is_active'>
 
@@ -27,6 +28,7 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
   const [error, setError] = useState('')
   const [editingPerson, setEditingPerson] = useState<ProfileLite | null>(null)
   const [addingToTeamId, setAddingToTeamId] = useState<string | null>(null)
+  const [addingLeaderToTeamId, setAddingLeaderToTeamId] = useState<string | null>(null)
 
   function findProfile(id: string) {
     return allProfiles.find(p => p.id === id)
@@ -94,11 +96,26 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
     }
   }
 
-  async function handleDeactivate(personId: string) {
-    if (!confirm('Deactivate this person? They will no longer be able to log in.')) return
+  async function handleRemoveFromTeam(personId: string, teamId: string, isLeader: boolean) {
+    if (!confirm('Remove this person from this team?')) return
     setError('')
-    const { error: err } = await supabase.from('profiles').update({ is_active: false }).eq('id', personId)
-    if (err) { setError('Could not deactivate — please try again.'); return }
+
+    if (isLeader) {
+      const { error: leaderErr } = await supabase.from('team_leaders').delete().eq('profile_id', personId).eq('team_id', teamId)
+      if (leaderErr) { setError('Could not remove as leader — please try again.'); return }
+    }
+
+    // Only clear their team_members row if it currently points at this same
+    // team — a person leading multiple teams could have their one
+    // membership row pointing at a different team than the one being
+    // removed here, and removing leadership of team A shouldn't unassign
+    // them from team B.
+    const membership = teamMembers.find(tm => tm.profile_id === personId)
+    if (membership && membership.team_id === teamId) {
+      const { error: memberErr } = await supabase.from('team_members').delete().eq('profile_id', personId)
+      if (memberErr) { setError('Could not remove from team — please try again.'); return }
+    }
+
     router.refresh()
   }
 
@@ -112,8 +129,9 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
               key={column.team.id}
               column={column}
               onEdit={setEditingPerson}
-              onDeactivate={handleDeactivate}
+              onRemove={handleRemoveFromTeam}
               onAdd={setAddingToTeamId}
+              onAddLeader={setAddingLeaderToTeamId}
             />
           ))}
         </div>
@@ -131,6 +149,16 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
         unassigned={unassigned}
         onClose={() => setAddingToTeamId(null)}
         onSuccess={() => { setAddingToTeamId(null); router.refresh() }}
+      />
+      <AddTeamLeaderModal
+        teamId={addingLeaderToTeamId}
+        candidates={allProfiles.filter(p => p.is_active)}
+        onClose={() => setAddingLeaderToTeamId(null)}
+        onAssign={async personId => {
+          const person = findProfile(personId)
+          await moveToLeaderSlot(personId, addingLeaderToTeamId!, person?.role ?? 'agent')
+          setAddingLeaderToTeamId(null)
+        }}
       />
     </DndContext>
   )
