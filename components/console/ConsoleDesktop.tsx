@@ -9,6 +9,7 @@ import TeamleadersConsole from './TeamleadersConsole'
 import AgentsConsole from './AgentsConsole'
 import ManagementConsole from './ManagementConsole'
 import { DashboardContentProps } from '@/components/dashboard/DashboardContent'
+import { loadWindowGeometry, saveWindowGeometry } from '@/lib/console/windowPersistence'
 
 export interface ConsoleDesktopProps {
   role: 'admin' | 'management'
@@ -25,6 +26,7 @@ export default function ConsoleDesktop({ role, dashboardData }: ConsoleDesktopPr
   const [bounds, setBounds] = useState({ width: 0, height: 0 })
   const desktopRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
+  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   useLayoutEffect(() => {
     const node = desktopRef.current
@@ -44,17 +46,30 @@ export default function ConsoleDesktop({ role, dashboardData }: ConsoleDesktopPr
     const initial = measure()
     setBounds(initial)
 
-    // One-time correction of any hardcoded default positions (windowConfig.ts) that would
-    // otherwise fall outside a normal viewport's actual measured bounds, leaving a window's
-    // title bar unreachable (or hidden under the Dock) from mount. Intentionally mount-only —
-    // re-running this whenever `windows` changes would fight the user's own drags every time
-    // state updates.
+    // One-time restore of any previously-saved geometry (localStorage isn't available
+    // during SSR, so this can't happen in buildInitialWindowStates without causing a
+    // hydration mismatch — doing it here, in a layout effect that runs before paint,
+    // means the very first painted frame already reflects it, no visible flash) plus
+    // the pre-existing correction of hardcoded default positions that would otherwise
+    // fall outside a normal viewport's actual measured bounds. Intentionally mount-only
+    // — re-running this whenever `windows` changes would fight the user's own drags
+    // every time state updates.
+    const saved = loadWindowGeometry()
     setWindows(prev =>
-      prev.map(w => ({
-        ...w,
-        x: Math.min(w.x, Math.max(0, initial.width - MIN_REACHABLE_WIDTH)),
-        y: Math.min(w.y, Math.max(0, initial.height - MIN_REACHABLE_HEIGHT)),
-      })),
+      prev.map(w => {
+        const g = saved[w.id]
+        const width = g?.width ?? w.width
+        const height = g?.height ?? w.height
+        const x = g?.x ?? w.x
+        const y = g?.y ?? w.y
+        return {
+          ...w,
+          width,
+          height,
+          x: Math.min(x, Math.max(0, initial.width - MIN_REACHABLE_WIDTH)),
+          y: Math.min(y, Math.max(0, initial.height - MIN_REACHABLE_HEIGHT)),
+        }
+      }),
     )
 
     function handleResize() {
@@ -67,6 +82,21 @@ export default function ConsoleDesktop({ role, dashboardData }: ConsoleDesktopPr
 
   function updateWindow(id: string, patch: Partial<WindowState>) {
     setWindows(prev => prev.map(w => (w.id === id ? { ...w, ...patch } : w)))
+
+    const touchesGeometry = 'x' in patch || 'y' in patch || 'width' in patch || 'height' in patch
+    if (!touchesGeometry) return
+
+    // Debounce the localStorage WRITE specifically (state above still updates
+    // immediately, for a responsive drag/resize) — a gesture fires this on every
+    // pointermove, and synchronous localStorage writes on every frame would be
+    // wasteful and could jank the gesture itself.
+    const current = windows.find(w => w.id === id)
+    if (!current) return
+    const merged = { ...current, ...patch }
+    clearTimeout(saveTimers.current[id])
+    saveTimers.current[id] = setTimeout(() => {
+      saveWindowGeometry(id, { x: merged.x, y: merged.y, width: merged.width, height: merged.height })
+    }, 300)
   }
 
   function focusWindow(id: string) {
@@ -102,7 +132,7 @@ export default function ConsoleDesktop({ role, dashboardData }: ConsoleDesktopPr
             state={w}
             bounds={bounds}
             onDrag={(x, y) => updateWindow(w.id, { x, y })}
-            onResize={(width, height) => updateWindow(w.id, { width, height })}
+            onResize={patch => updateWindow(w.id, patch)}
             onFocus={() => focusWindow(w.id)}
             onMinimize={() => setStatus(w.id, 'minimized')}
             onClose={() => setStatus(w.id, 'closed')}

@@ -5,11 +5,13 @@ import { Minus, X } from 'lucide-react'
 import { animate } from 'animejs'
 import { WindowState } from './types'
 
+export type ResizeCorner = 'nw' | 'ne' | 'sw' | 'se'
+
 export interface WindowProps {
   state: WindowState
   children: React.ReactNode
   onDrag: (x: number, y: number) => void
-  onResize: (width: number, height: number) => void
+  onResize: (patch: { x: number; y: number; width: number; height: number }) => void
   onFocus: () => void
   onMinimize: () => void
   onClose: () => void
@@ -24,10 +26,20 @@ const MIN_HEIGHT = 240
 const MIN_REACHABLE_WIDTH = 120
 const MIN_REACHABLE_HEIGHT = 48
 
+interface ResizeOrigin {
+  pointerX: number
+  pointerY: number
+  startX: number
+  startY: number
+  startWidth: number
+  startHeight: number
+  corner: ResizeCorner
+}
+
 export default function Window({ state, children, onDrag, onResize, onFocus, onMinimize, onClose, bounds }: WindowProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const dragOrigin = useRef<{ pointerX: number; pointerY: number; startX: number; startY: number } | null>(null)
-  const resizeOrigin = useRef<{ pointerX: number; pointerY: number; startWidth: number; startHeight: number } | null>(null)
+  const resizeOrigin = useRef<ResizeOrigin | null>(null)
 
   useEffect(() => {
     const node = rootRef.current
@@ -93,20 +105,44 @@ export default function Window({ state, children, onDrag, onResize, onFocus, onM
   }
 
   function handleResizePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    const corner = e.currentTarget.dataset.corner as ResizeCorner
     e.stopPropagation()
     onFocus()
-    resizeOrigin.current = { pointerX: e.clientX, pointerY: e.clientY, startWidth: state.width, startHeight: state.height }
+    resizeOrigin.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      startX: state.x,
+      startY: state.y,
+      startWidth: state.width,
+      startHeight: state.height,
+      corner,
+    }
     e.currentTarget.setPointerCapture(e.pointerId)
   }
 
   function handleResizePointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!resizeOrigin.current) return
-    const dx = e.clientX - resizeOrigin.current.pointerX
-    const dy = e.clientY - resizeOrigin.current.pointerY
-    onResize(
-      Math.max(MIN_WIDTH, resizeOrigin.current.startWidth + dx),
-      Math.max(MIN_HEIGHT, resizeOrigin.current.startHeight + dy),
-    )
+    const origin = resizeOrigin.current
+    if (!origin) return
+    const dx = e.clientX - origin.pointerX
+    const dy = e.clientY - origin.pointerY
+
+    // 'ne'/'se' grow to the right (x stays put); 'nw'/'sw' grow to the left (x moves
+    // with the left edge). Same idea vertically: 'sw'/'se' grow downward (y stays
+    // put), 'nw'/'ne' grow upward (y moves with the top edge).
+    const growsRight = origin.corner === 'ne' || origin.corner === 'se'
+    const growsDown = origin.corner === 'sw' || origin.corner === 'se'
+
+    const width = Math.max(MIN_WIDTH, growsRight ? origin.startWidth + dx : origin.startWidth - dx)
+    const height = Math.max(MIN_HEIGHT, growsDown ? origin.startHeight + dy : origin.startHeight - dy)
+
+    // Deriving x/y from the ACTUAL (post-clamp) width/height, not the raw dx/dy,
+    // keeps the opposite edge fixed even once MIN_WIDTH/MIN_HEIGHT stops the resize
+    // — otherwise the origin would keep sliding past the point where the size floor
+    // was hit.
+    const x = growsRight ? origin.startX : Math.max(0, origin.startX + (origin.startWidth - width))
+    const y = growsDown ? origin.startY : Math.max(0, origin.startY + (origin.startHeight - height))
+
+    onResize({ x, y, width, height })
   }
 
   function handleResizePointerUp() {
@@ -156,6 +192,31 @@ export default function Window({ state, children, onDrag, onResize, onFocus, onM
       </div>
 
       <div
+        data-corner="nw"
+        onPointerDown={handleResizePointerDown}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={handleResizePointerUp}
+        className="absolute top-0 left-0 w-4 h-4 cursor-nwse-resize"
+        aria-hidden="true"
+      />
+      <div
+        data-corner="ne"
+        onPointerDown={handleResizePointerDown}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={handleResizePointerUp}
+        className="absolute top-0 right-0 w-4 h-4 cursor-nesw-resize"
+        aria-hidden="true"
+      />
+      <div
+        data-corner="sw"
+        onPointerDown={handleResizePointerDown}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={handleResizePointerUp}
+        className="absolute bottom-0 left-0 w-4 h-4 cursor-nesw-resize"
+        aria-hidden="true"
+      />
+      <div
+        data-corner="se"
         onPointerDown={handleResizePointerDown}
         onPointerMove={handleResizePointerMove}
         onPointerUp={handleResizePointerUp}
