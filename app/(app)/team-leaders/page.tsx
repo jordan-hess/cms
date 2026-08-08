@@ -13,13 +13,16 @@ export default async function TeamLeadersPage() {
     { data: teamLeaders },
     { data: allProfiles },
   ] = await Promise.all([
-    supabase.from('teams').select('id, name, color, description').order('name'),
-    supabase.from('team_members').select('id, team_id, profile_id, joined_at, profiles(id, full_name, email, role, department, is_active)'),
-    // team_leaders has two FKs to profiles (profile_id, assigned_by) — the embed
-    // must be qualified or PostgREST returns an error instead of rows (see
-    // app/(app)/coaching/page.tsx for the same pattern/reason).
-    supabase.from('team_leaders').select('id, team_id, profile_id, assigned_by, created_at, profiles!team_leaders_profile_id_fkey(id, full_name, email, role, department, is_active)'),
-    supabase.from('profiles').select('id, full_name, email, role, department, is_active').eq('is_active', true),
+    supabase.from('teams').select('*').order('name'),
+    // Flat fetch, no embed — joined client-side against allProfiles below,
+    // matching this codebase's established pattern for admin-style pages
+    // (AgentManager, ManageTeamsModal) rather than an embedded select.
+    supabase.from('team_members').select('*'),
+    supabase.from('team_leaders').select('*'),
+    // Fetch everyone, not just active people — inactive members/leaders still
+    // need to resolve and render (greyed out) in their team column. The Add
+    // flow filters to is_active itself when computing the unassigned pool.
+    supabase.from('profiles').select('id, full_name, email, role, department, is_active'),
   ])
 
   return (
