@@ -71,19 +71,23 @@ Two clients, never mixed up:
 | Server | `lib/supabase/server.ts` | Server Components, Route Handlers, `proxy.ts` — `await createClient()` |
 | Browser | `lib/supabase/client.ts` | `'use client'` components — `createClient()` (sync) |
 
-The admin client (service role key, bypasses RLS) is only constructed inline in `app/api/admin/create-user/route.ts` — do not use it elsewhere.
+The admin client (service role key, bypasses RLS) is constructed inline, only where a service-role operation is genuinely required: `app/api/admin/create-user/route.ts`, `app/api/admin/review-password-reset/route.ts`, `app/api/auth/security-reset/route.ts`, `app/api/auth/request-password-reset/route.ts`, `app/api/profile/update/route.ts`, and `lib/auth/config.ts`. Do not add new inline admin-client usages elsewhere without good reason.
 
 ### Data fetching pattern
 
 All pages inside `(app)/` are **async Server Components**. They fetch data at render time:
 
 ```tsx
+import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
+
 export default async function SomePage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const userId = await getCurrentUserId(supabase)
   const [{ data: a }, { data: b }] = await Promise.all([...]) // parallel queries
 }
 ```
+
+Note: `lib/supabase/server.ts`'s post-migration client is constructed with Supabase's `accessToken` option, which disables the client's entire `.auth` namespace — calling `supabase.auth.getUser()` throws unconditionally for Auth.js-authenticated users. Always resolve the current user via `getCurrentUserId(supabase)` instead (`userId`, not `user.id`).
 
 Pages pass initial data as props to `'use client'` manager components (`CustomerManager`, `CallbackManager`, etc.). Those components use the browser client for mutations and call `router.refresh()` to revalidate the server component.
 

@@ -8,7 +8,7 @@ export default async function AdminAgentsPage() {
   const userId = await getCurrentUserId(supabase)
 
   const [{ data: agents }, { data: teams }, { data: memberships }, { data: shiftTemplates }, { data: teamLeaders }] = await Promise.all([
-    supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+    supabase.from('profiles').select('id, email, full_name, role, department, avatar_url, is_active, force_password_change, created_at, updated_at').order('created_at', { ascending: false }),
     supabase.from('teams').select('*').order('name'),
     supabase.from('team_members').select('*'),
     supabase.from('shift_templates').select('*').order('name'),

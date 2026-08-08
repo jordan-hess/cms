@@ -18,7 +18,7 @@ export default async function AdminDashboardPage() {
     { data: allPendingRequests },
     { data: resetRequests },
   ] = await Promise.all([
-    supabase.from('profiles').select('*').eq('role', 'agent').eq('is_active', true),
+    supabase.from('profiles').select('id, email, full_name, role, department, avatar_url, is_active, force_password_change, created_at, updated_at').eq('role', 'agent').eq('is_active', true),
     supabase.from('callbacks').select('*, customers(name, phone), profiles!callbacks_agent_id_fkey(full_name)').order('scheduled_at', { ascending: true }),
     supabase.from('followups').select('*, customers(name, phone), profiles!followups_agent_id_fkey(full_name)').order('created_at', { ascending: false }),
     supabase.from('customers').select('id'),

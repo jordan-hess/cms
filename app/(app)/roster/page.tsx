@@ -13,7 +13,7 @@ export default async function RosterPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('*')
+    .select('id, email, full_name, role, department, avatar_url, is_active, force_password_change, created_at, updated_at')
     .eq('id', userId)
     .single()
 

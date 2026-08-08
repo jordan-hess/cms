@@ -2,8 +2,20 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
-  const { email } = await request.json()
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
+  }
 
+  if (typeof body !== 'object' || body === null) {
+    return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
+  }
+
+  const { email } = body as { email?: unknown }
+
+  if (typeof email !== 'string') return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
   if (!email) return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
 
   const adminClient = createAdminClient(

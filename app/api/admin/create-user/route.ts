@@ -13,7 +13,20 @@ export async function POST(request: Request) {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).single()
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { email, full_name, password, role, department } = await request.json()
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
+  }
+
+  if (typeof body !== 'object' || body === null) {
+    return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
+  }
+
+  const { email, full_name, password, role, department } = body as {
+    email?: string; full_name?: string; password?: string; role?: string; department?: string
+  }
   if (!email || !full_name || !password || !role) {
     return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 })
   }
@@ -40,7 +53,10 @@ export async function POST(request: Request) {
     is_active: true,
   })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  if (error) {
+    console.error('create-user: failed to insert profile', error)
+    return NextResponse.json({ error: 'Server error.' }, { status: 500 })
+  }
 
   return NextResponse.json({ success: true })
 }

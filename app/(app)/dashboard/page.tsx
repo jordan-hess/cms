@@ -15,7 +15,7 @@ export default async function DashboardPage() {
     { data: customers },
     { data: notifications },
   ] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', userId!).single(),
+    supabase.from('profiles').select('id, email, full_name, role, department, avatar_url, is_active, force_password_change, created_at, updated_at').eq('id', userId!).single(),
     supabase.from('callbacks').select('*, customers(name, phone)').eq('agent_id', userId!).order('scheduled_at', { ascending: true }),
     supabase.from('followups').select('*, customers(name, phone)').eq('agent_id', userId!).order('created_at', { ascending: false }),
     supabase.from('customers').select('id').eq('created_by', userId!),
