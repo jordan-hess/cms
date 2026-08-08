@@ -1,5 +1,6 @@
 'use client'
 
+import { useDroppable } from '@dnd-kit/core'
 import { Plus, Crown } from 'lucide-react'
 import { TeamBoardColumn, Profile } from '@/types'
 import PersonCard from './PersonCard'
@@ -18,6 +19,9 @@ export default function TeamColumn({ column, onEdit, onDeactivate, onAdd }: Prop
   const { team, leader, members } = column
   const c = teamColorClasses[team.color]
 
+  const { setNodeRef: setLeaderRef, isOver: isLeaderOver } = useDroppable({ id: `leader:${team.id}` })
+  const { setNodeRef: setMembersRef, isOver: isMembersOver } = useDroppable({ id: `members:${team.id}` })
+
   return (
     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col w-72 shrink-0">
       <div className={`px-4 py-3 rounded-t-xl border-b ${c.border} ${c.lightBg}`}>
@@ -28,11 +32,16 @@ export default function TeamColumn({ column, onEdit, onDeactivate, onAdd }: Prop
         <p className="text-xs font-medium text-gray-400 uppercase tracking-wide flex items-center gap-1">
           <Crown className="w-3 h-3" /> Leader
         </p>
-        <div className="min-h-[52px] rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700 p-1">
+        <div
+          ref={setLeaderRef}
+          className={`min-h-13 rounded-lg border-2 border-dashed p-1 transition-colors ${
+            isLeaderOver ? 'border-purple-400 bg-purple-50 dark:bg-purple-900/20' : 'border-gray-200 dark:border-gray-700'
+          }`}
+        >
           {leader ? (
             <PersonCard person={leader} isLeader onEdit={onEdit} onDeactivate={onDeactivate} />
           ) : (
-            <p className="text-xs text-gray-400 text-center py-3">No leader assigned</p>
+            <p className="text-xs text-gray-400 text-center py-3">Drop someone here to lead this team</p>
           )}
         </div>
       </div>
@@ -44,7 +53,12 @@ export default function TeamColumn({ column, onEdit, onDeactivate, onAdd }: Prop
             <Plus className="w-4 h-4" />
           </button>
         </div>
-        <div className="min-h-[80px] rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700 p-1 space-y-1.5">
+        <div
+          ref={setMembersRef}
+          className={`min-h-20 rounded-lg border-2 border-dashed p-1 space-y-1.5 transition-colors ${
+            isMembersOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'
+          }`}
+        >
           {members.length === 0 ? (
             <p className="text-xs text-gray-400 text-center py-3">No members</p>
           ) : (
