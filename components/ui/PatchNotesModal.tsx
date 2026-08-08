@@ -10,6 +10,16 @@ interface PatchNote {
 
 const PATCH_NOTES: PatchNote[] = [
   {
+    version: 'v0.2.0',
+    date: '2026-08-08',
+    changes: [
+      'Added a Coaching page for management: track monthly 1-on-1 completion between team leaders and their agents, plus management’s own check-ins with each team leader',
+      'Added a Team Leaders Management page for management: a drag-and-drop board to move agents between teams, promote someone to team leader by dropping them into a leader slot, and edit or remove people from a team',
+      'Management can now create, rename, and delete teams directly from the Team Leaders Management page',
+      'The Team Leaders Management board now uses the full page width and scrolls vertically instead of side to side',
+    ],
+  },
+  {
     version: 'v0.1.0',
     date: '2026-08-07',
     changes: [
