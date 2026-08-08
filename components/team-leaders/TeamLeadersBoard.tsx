@@ -103,7 +103,7 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <DndContext id="team-leaders-board" sensors={sensors} onDragEnd={handleDragEnd}>
       <div className="space-y-4">
         {error && <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/30 rounded-lg px-3 py-2">{error}</p>}
         <div className="flex gap-4 overflow-x-auto pb-4">
