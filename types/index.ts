@@ -288,6 +288,15 @@ export interface CoachingAgentCheckin {
 
 export type CoachingLeaderCheckin = CoachingAgentCheckin
 
+// ─── Team Leaders Management (board view-model) ────────────────────────────────
+
+/** Computed client-side board-column view-model, one per team */
+export interface TeamBoardColumn {
+  team: Team
+  leader: (Pick<Profile, 'id' | 'full_name' | 'email' | 'role' | 'department' | 'is_active'> & { teamLeaderRowId: string }) | null
+  members: Pick<Profile, 'id' | 'full_name' | 'email' | 'role' | 'department' | 'is_active'>[]
+}
+
 /** Computed client-side card view-model, one per unique team leader */
 export interface CoachingLeaderCard {
   leaderId: string
