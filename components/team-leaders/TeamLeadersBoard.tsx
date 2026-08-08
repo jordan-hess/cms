@@ -124,6 +124,14 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
     router.refresh()
   }
 
+  async function handleDeleteTeam(team: Team) {
+    if (!confirm(`Delete the "${team.name}" team? This also removes its leader and member assignments. This cannot be undone.`)) return
+    setError('')
+    const { error: err } = await supabase.from('teams').delete().eq('id', team.id)
+    if (err) { setError('Could not delete team — please try again.'); return }
+    router.refresh()
+  }
+
   return (
     <DndContext id="team-leaders-board" sensors={sensors} onDragEnd={handleDragEnd}>
       <div className="space-y-4">
@@ -137,7 +145,7 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
             <Plus className="w-4 h-4" /> Add Team
           </button>
         </div>
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {columns.map(column => (
             <TeamColumn
               key={column.team.id}
@@ -147,6 +155,7 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
               onAdd={setAddingToTeamId}
               onAddLeader={setAddingLeaderToTeamId}
               onRenameTeam={setRenamingTeam}
+              onDeleteTeam={handleDeleteTeam}
             />
           ))}
         </div>

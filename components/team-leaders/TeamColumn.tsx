@@ -1,7 +1,7 @@
 'use client'
 
 import { useDroppable } from '@dnd-kit/core'
-import { Plus, Crown, UserPlus, Pencil } from 'lucide-react'
+import { Plus, Crown, UserPlus, Pencil, Trash2 } from 'lucide-react'
 import { TeamBoardColumn, Profile, Team } from '@/types'
 import PersonCard from './PersonCard'
 import { teamColorClasses } from '@/lib/roster/teamColors'
@@ -15,9 +15,10 @@ interface Props {
   onAdd: (teamId: string) => void
   onAddLeader: (teamId: string) => void
   onRenameTeam: (team: Team) => void
+  onDeleteTeam: (team: Team) => void
 }
 
-export default function TeamColumn({ column, onEdit, onRemove, onAdd, onAddLeader, onRenameTeam }: Props) {
+export default function TeamColumn({ column, onEdit, onRemove, onAdd, onAddLeader, onRenameTeam, onDeleteTeam }: Props) {
   const { team, leader, members } = column
   const c = teamColorClasses[team.color]
 
@@ -25,12 +26,17 @@ export default function TeamColumn({ column, onEdit, onRemove, onAdd, onAddLeade
   const { setNodeRef: setMembersRef, isOver: isMembersOver } = useDroppable({ id: `members:${team.id}` })
 
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col w-72 shrink-0">
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col">
       <div className={`px-4 py-3 rounded-t-xl border-b flex items-center justify-between gap-2 ${c.border} ${c.lightBg}`}>
         <p className={`font-semibold text-sm truncate ${c.text}`}>{team.name}</p>
-        <button type="button" onClick={() => onRenameTeam(team)} className={`shrink-0 opacity-60 hover:opacity-100 ${c.text}`} title="Rename team">
-          <Pencil className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button type="button" onClick={() => onRenameTeam(team)} className={`opacity-60 hover:opacity-100 ${c.text}`} title="Rename team">
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+          <button type="button" onClick={() => onDeleteTeam(team)} className="opacity-60 hover:opacity-100 hover:text-red-600" title="Delete team">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       <div className="p-3 space-y-2">
