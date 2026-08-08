@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Users, Phone, FileText, ShieldAlert, LogOut, UserCog,
-  CalendarDays, Settings, Inbox, Pencil, Eye, EyeOff, Check, Handshake,
+  CalendarDays, Settings, Inbox, Pencil, Eye, EyeOff, Check, Handshake, Users2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { createLegacyAuthClient } from '@/lib/supabase/legacyAuthClient'
@@ -26,7 +26,9 @@ function getPrimaryLinks(role: Role) {
     role === 'management'
       ? { href: '/coaching', label: 'Coaching', icon: Handshake }
       : { href: '/customers', label: 'Customers', icon: Users },
-    { href: '/callbacks', label: 'Callbacks', icon: Phone },
+    role === 'management'
+      ? { href: '/team-leaders', label: 'Team Leaders Management', icon: Users2 }
+      : { href: '/callbacks', label: 'Callbacks', icon: Phone },
     { href: '/followups', label: 'Follow-ups', icon: FileText },
     { href: '/roster', label: 'Team Roster', icon: CalendarDays },
   ]

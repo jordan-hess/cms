@@ -71,6 +71,10 @@ export async function proxy(request: NextRequest) {
     if (pathname.startsWith('/coaching') && profile?.role !== 'management') {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
+
+    if (pathname.startsWith('/team-leaders') && profile?.role !== 'management') {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
   }
 
   return response
