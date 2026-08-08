@@ -6,6 +6,8 @@ import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '
 import { createClient } from '@/lib/supabase/client'
 import { Team, TeamMember, TeamLeader, Profile, Role, TeamBoardColumn } from '@/types'
 import TeamColumn from './TeamColumn'
+import EditPersonModal from './EditPersonModal'
+import AddToTeamModal from './AddToTeamModal'
 
 type ProfileLite = Pick<Profile, 'id' | 'full_name' | 'email' | 'role' | 'department' | 'is_active'>
 
@@ -23,6 +25,8 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   const [error, setError] = useState('')
+  const [editingPerson, setEditingPerson] = useState<ProfileLite | null>(null)
+  const [addingToTeamId, setAddingToTeamId] = useState<string | null>(null)
 
   function findProfile(id: string) {
     return allProfiles.find(p => p.id === id)
@@ -40,6 +44,8 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
 
     return { team, leader, members }
   })
+
+  const unassigned = allProfiles.filter(p => p.is_active && !teamMembers.some(tm => tm.profile_id === p.id))
 
   async function moveToTeam(personId: string, newTeamId: string) {
     setError('')
@@ -105,13 +111,27 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
             <TeamColumn
               key={column.team.id}
               column={column}
-              onEdit={() => {}}
+              onEdit={setEditingPerson}
               onDeactivate={handleDeactivate}
-              onAdd={() => {}}
+              onAdd={setAddingToTeamId}
             />
           ))}
         </div>
       </div>
+
+      <EditPersonModal
+        key={editingPerson?.id ?? 'edit-modal-closed'}
+        person={editingPerson}
+        isCurrentlyLeading={editingPerson ? teamLeaders.some(tl => tl.profile_id === editingPerson.id) : false}
+        onClose={() => setEditingPerson(null)}
+        onSuccess={() => { setEditingPerson(null); router.refresh() }}
+      />
+      <AddToTeamModal
+        teamId={addingToTeamId}
+        unassigned={unassigned}
+        onClose={() => setAddingToTeamId(null)}
+        onSuccess={() => { setAddingToTeamId(null); router.refresh() }}
+      />
     </DndContext>
   )
 }
