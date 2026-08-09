@@ -1,31 +1,38 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import Header from '@/components/layout/Header'
-import AgentManager from '@/components/admin/AgentManager'
+import TeamLeadersBoard from '@/components/team-leaders/TeamLeadersBoard'
 
 export default async function AdminAgentsPage() {
   const supabase = await createClient()
   const userId = await getCurrentUserId(supabase)
 
-  const [{ data: agents }, { data: teams }, { data: memberships }, { data: shiftTemplates }, { data: teamLeaders }] = await Promise.all([
-    supabase.from('profiles').select('id, email, full_name, role, department, avatar_url, is_active, force_password_change, created_at, updated_at').order('created_at', { ascending: false }),
+  const [
+    { data: teams },
+    { data: teamMembers },
+    { data: teamLeaders },
+    { data: allProfiles },
+    { data: shiftTemplates },
+  ] = await Promise.all([
     supabase.from('teams').select('*').order('name'),
     supabase.from('team_members').select('*'),
-    supabase.from('shift_templates').select('*').order('name'),
     supabase.from('team_leaders').select('*'),
+    supabase.from('profiles').select('id, full_name, email, role, department, is_active'),
+    supabase.from('shift_templates').select('*').order('name'),
   ])
 
   return (
     <div>
       <Header title="Manage Agents" userId={userId!} userRole="admin" />
       <div className="p-6">
-        <AgentManager
-          agents={agents || []}
-          adminId={userId!}
-          teams={teams || []}
-          memberships={memberships || []}
+        <TeamLeadersBoard
+          isAdminView
           shiftTemplates={shiftTemplates || []}
+          teams={teams || []}
+          teamMembers={teamMembers || []}
           teamLeaders={teamLeaders || []}
+          allProfiles={allProfiles || []}
+          currentUserId={userId!}
         />
       </div>
     </div>
