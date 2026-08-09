@@ -232,6 +232,7 @@ export default function FollowupManager({
 
       {isManagement ? (
         <ManagementFollowupModal
+          key={editing?.id ?? 'add'}
           open={modal}
           onClose={() => setModal(false)}
           editing={editing}
