@@ -12,6 +12,7 @@ import AddToTeamModal from './AddToTeamModal'
 import AddTeamLeaderModal from './AddTeamLeaderModal'
 import AddTeamModal from './AddTeamModal'
 import EditTeamNameModal from './EditTeamNameModal'
+import AddTeamMemberModal from './AddTeamMemberModal'
 
 type ProfileLite = Pick<Profile, 'id' | 'full_name' | 'email' | 'role' | 'department' | 'is_active'>
 
@@ -33,6 +34,7 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
   const [addingToTeamId, setAddingToTeamId] = useState<string | null>(null)
   const [addingLeaderToTeamId, setAddingLeaderToTeamId] = useState<string | null>(null)
   const [addingTeam, setAddingTeam] = useState(false)
+  const [addingTeamMember, setAddingTeamMember] = useState(false)
   const [renamingTeam, setRenamingTeam] = useState<Team | null>(null)
 
   function findProfile(id: string) {
@@ -136,7 +138,14 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
     <DndContext id="team-leaders-board" sensors={sensors} onDragEnd={handleDragEnd}>
       <div className="space-y-4">
         {error && <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/30 rounded-lg px-3 py-2">{error}</p>}
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setAddingTeamMember(true)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Add Team Member
+          </button>
           <button
             type="button"
             onClick={() => setAddingTeam(true)}
@@ -188,6 +197,11 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
         open={addingTeam}
         onClose={() => setAddingTeam(false)}
         onSuccess={() => { setAddingTeam(false); router.refresh() }}
+      />
+      <AddTeamMemberModal
+        open={addingTeamMember}
+        onClose={() => setAddingTeamMember(false)}
+        onSuccess={() => router.refresh()}
       />
       <EditTeamNameModal
         key={renamingTeam?.id ?? 'rename-team-modal-closed'}
