@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).single()
-  if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (profile?.role !== 'admin' && profile?.role !== 'management') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   let body: unknown
   try {
