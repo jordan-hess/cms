@@ -10,6 +10,7 @@ type PersonLite = Pick<Profile, 'id' | 'full_name' | 'email' | 'role' | 'departm
 interface Props {
   person: PersonLite | null
   isCurrentlyLeading: boolean
+  currentUserId?: string
   onClose: () => void
   onSuccess: () => void
 }
@@ -17,7 +18,7 @@ interface Props {
 const inputCls = 'w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none'
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
 
-export default function EditPersonModal({ person, isCurrentlyLeading, onClose, onSuccess }: Props) {
+export default function EditPersonModal({ person, isCurrentlyLeading, currentUserId, onClose, onSuccess }: Props) {
   // Rendered with a key={person.id} by the caller, so a fresh instance (and
   // fresh initial state below) mounts whenever a different person is edited
   // — no effect needed to "reset" the form on prop change.
@@ -31,6 +32,7 @@ export default function EditPersonModal({ person, isCurrentlyLeading, onClose, o
 
   if (!person) return null
   const currentPerson = person
+  const isSelf = currentUserId === currentPerson.id
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -45,7 +47,7 @@ export default function EditPersonModal({ person, isCurrentlyLeading, onClose, o
     const supabase = createClient()
     const { error: err } = await supabase
       .from('profiles')
-      .update({ full_name: form.full_name, department: form.department || null, role: form.role })
+      .update({ full_name: form.full_name, department: form.department || null, role: isSelf ? currentPerson.role : form.role })
       .eq('id', currentPerson.id)
 
     setSaving(false)
@@ -66,12 +68,15 @@ export default function EditPersonModal({ person, isCurrentlyLeading, onClose, o
         </div>
         <div>
           <label className={labelCls}>Role</label>
-          <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as Role }))} className={inputCls}>
+          <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as Role }))} disabled={isSelf} className={inputCls}>
             <option value="agent">Agent</option>
             <option value="admin">Admin</option>
             <option value="management">Management</option>
           </select>
-          {isCurrentlyLeading && (
+          {isSelf && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">You can&apos;t change your own role here.</p>
+          )}
+          {!isSelf && isCurrentlyLeading && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Currently leads a team — must stay Admin, or be removed as leader first.</p>
           )}
         </div>
