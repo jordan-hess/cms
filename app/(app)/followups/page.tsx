@@ -46,7 +46,7 @@ export default async function FollowupsPage() {
       supabase.from('team_leaders').select('profile_id, profiles!team_leaders_profile_id_fkey(id, full_name, email, is_active)'),
     ])
     agentCandidates = agents || []
-    teamLeaderCandidates = leaders || []
+    teamLeaderCandidates = (leaders || []) as unknown as typeof teamLeaderCandidates
   }
 
   return (
