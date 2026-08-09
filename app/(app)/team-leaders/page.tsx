@@ -16,7 +16,8 @@ export default async function TeamLeadersPage() {
     supabase.from('teams').select('*').order('name'),
     // Flat fetch, no embed — joined client-side against allProfiles below,
     // matching this codebase's established pattern for admin-style pages
-    // (AgentManager, ManageTeamsModal) rather than an embedded select.
+    // that resolve foreign keys in the client component rather than via
+    // an embedded select.
     supabase.from('team_members').select('*'),
     supabase.from('team_leaders').select('*'),
     // Fetch everyone, not just active people — inactive members/leaders still

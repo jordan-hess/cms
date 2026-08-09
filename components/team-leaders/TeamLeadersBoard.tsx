@@ -60,6 +60,7 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
   })
 
   const unassigned = allProfiles.filter(p => (isAdminView || p.is_active) && !teamMembers.some(tm => tm.profile_id === p.id))
+  const unassignedForAdd = unassigned.filter(p => p.is_active)
 
   async function moveToTeam(personId: string, newTeamId: string) {
     setError('')
@@ -140,6 +141,7 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
   }
 
   async function handleToggleActive(personId: string, isActive: boolean) {
+    if (isActive && !confirm('Deactivate this person? They will not be able to sign in.')) return
     setError('')
     const { error: err } = await supabase.from('profiles').update({ is_active: !isActive }).eq('id', personId)
     if (err) { setError('Could not update status — please try again.'); return }
@@ -205,7 +207,7 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
       />
       <AddToTeamModal
         teamId={addingToTeamId}
-        unassigned={unassigned}
+        unassigned={unassignedForAdd}
         onClose={() => setAddingToTeamId(null)}
         onSuccess={() => { setAddingToTeamId(null); router.refresh() }}
       />
