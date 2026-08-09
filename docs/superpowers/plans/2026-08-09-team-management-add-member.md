@@ -410,10 +410,188 @@ If Steps 1-2 required any code fixes, commit each individually with a message de
 
 ---
 
+## Plan Amendment (post-final-review)
+
+Tasks 1-5 above were executed and passed their individual reviews. The final whole-plan review then found that a newly-created person is never visible anywhere on the board — `unassigned` was already computed in `TeamLeadersBoard.tsx` but its only consumer was the `AddToTeamModal` dropdown, not any rendered list. There was nowhere to drag a new person from, contradicting both this plan's own Task 5 Step 2 ("Drag that new agent onto a team") and the design spec's "ready to be dragged onto a team." Presented to the human as a real decision (leave as-is + fix the docs, vs. add a visible panel) — they chose to add the panel. Tasks 6-7 below implement that plus three small Minor findings from the same final review (role allowlist, a stale `CLAUDE.md` line, a missing patch-notes entry). Task 8 re-verifies.
+
+### Task 6: Add a visible "Unassigned" panel to the board
+
+**Files:**
+- Create: `components/team-leaders/UnassignedPanel.tsx`
+- Modify: `components/team-leaders/PersonCard.tsx`
+- Modify: `components/team-leaders/TeamLeadersBoard.tsx`
+
+**Interfaces:**
+- Consumes: `unassigned` (already computed in `TeamLeadersBoard.tsx` — an array of the same `ProfileLite` shape used everywhere else in this file).
+- Produces: `UnassignedPanel` — default export, props `{ people: ProfileLite[]; onEdit: (person: ProfileLite) => void }`. No drop target, no new drag logic — each person it renders is already draggable via `PersonCard`'s existing `useDraggable`, so dropping them on any team's `leader:<teamId>`/`members:<teamId>` zone already works through the board's existing `handleDragEnd`.
+
+- [ ] **Step 1: Make `PersonCard`'s remove button optional**
+
+In `components/team-leaders/PersonCard.tsx`, an unassigned person has no team to be removed from, so the existing "Remove from team" button doesn't apply to them. Change the props and the button's rendering to make `onRemove` optional:
+
+```tsx
+interface Props {
+  person: PersonLite
+  isLeader: boolean
+  onEdit: (person: PersonLite) => void
+  onRemove?: (personId: string) => void
+}
+
+export default function PersonCard({ person, isLeader, onEdit, onRemove }: Props) {
+```
+
+And change the remove button's JSX from an unconditional render to:
+```tsx
+      {onRemove && (
+        <button type="button" onClick={() => onRemove(person.id)} className="p-1 text-gray-400 hover:text-red-600 shrink-0" title="Remove from team">
+          <UserMinus className="w-3.5 h-3.5" />
+        </button>
+      )}
+```
+(Everything else in this file — the `useDraggable` call, the outer `<div>`, the Edit button — is unchanged. Every existing caller in `TeamColumn.tsx` already passes `onRemove`, so this is additive and doesn't change any current behavior.)
+
+- [ ] **Step 2: Create `UnassignedPanel`**
+
+Create `components/team-leaders/UnassignedPanel.tsx`:
+
+```tsx
+'use client'
+
+import { Profile } from '@/types'
+import PersonCard from './PersonCard'
+
+type PersonLite = Pick<Profile, 'id' | 'full_name' | 'email' | 'role' | 'department' | 'is_active'>
+
+interface Props {
+  people: PersonLite[]
+  onEdit: (person: PersonLite) => void
+}
+
+export default function UnassignedPanel({ people, onEdit }: Props) {
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-3 space-y-2">
+      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Unassigned ({people.length})</p>
+      <div className="flex flex-wrap gap-2">
+        {people.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-3 w-full">No unassigned people</p>
+        ) : (
+          people.map(p => (
+            <div key={p.id} className="w-64">
+              <PersonCard person={p} isLeader={false} onEdit={onEdit} />
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+```
+
+(`onRemove` is deliberately omitted from this `<PersonCard>` call — per Task 6 Step 1, that hides the "remove from team" button, which is correct here since there's no team to remove them from.)
+
+- [ ] **Step 3: Render it on the board**
+
+In `components/team-leaders/TeamLeadersBoard.tsx`, add the import:
+```ts
+import UnassignedPanel from './UnassignedPanel'
+```
+
+Render it right after the "Add Team Member" / "Add Team" button row and before the team-columns grid:
+```tsx
+        <UnassignedPanel people={unassigned} onEdit={setEditingPerson} />
+```
+(`unassigned` and `setEditingPerson` already exist in this file — no new state needed.)
+
+- [ ] **Step 4: Verify**
+
+Run `npx tsc --noEmit` and `npm run lint` — expect no errors.
+
+Manual check, logged in as `management`: confirm the Unassigned panel renders above the team columns, listing every active person with no `team_members` row. Create a new person via "Add Team Member" — confirm they appear in this panel immediately after refresh. Drag them from the panel onto a team's member zone — confirm the existing `moveToTeam` behavior fires (same as dragging between two teams already does) and they disappear from the Unassigned panel, appearing in the target team instead.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add components/team-leaders/UnassignedPanel.tsx components/team-leaders/PersonCard.tsx components/team-leaders/TeamLeadersBoard.tsx
+git commit -m "feat: show unassigned people on the Team Management board"
+```
+
+---
+
+### Task 7: Final-review minor fixes
+
+**Files:**
+- Modify: `app/api/admin/create-user/route.ts`
+- Modify: `CLAUDE.md`
+- Modify: `components/ui/PatchNotesModal.tsx`
+
+**Interfaces:** none new.
+
+- [ ] **Step 1: Allowlist the `role` field**
+
+In `app/api/admin/create-user/route.ts`, after the existing `if (!email || !full_name || !password || !role)` check, add:
+```ts
+  if (role !== 'agent' && role !== 'admin') {
+    return NextResponse.json({ error: 'Invalid role.' }, { status: 400 })
+  }
+```
+This documents in code the actual decision already made (the modal only ever offers Agent/Admin) rather than relying on the UI alone plus a database CHECK constraint as the only backstop.
+
+- [ ] **Step 2: Update `CLAUDE.md`**
+
+In `CLAUDE.md`'s route-structure listing, change:
+```
+  api/admin/create-user/  # Service-role user creation (admin only)
+```
+to:
+```
+  api/admin/create-user/  # Service-role user creation (admin or management)
+```
+
+- [ ] **Step 3: Add a patch-notes entry**
+
+In `components/ui/PatchNotesModal.tsx`, add a new entry for this feature (read the file first to match its existing entry format/structure exactly — do not alter any existing historical entries, including ones that still say "Team Leaders Management"; those describe what shipped at the time and stay as historical record). The new entry's copy should cover: management can now create new team member accounts directly from the Team Management page, and the page/nav label changed from "Team Leaders Management" to "Team Management".
+
+- [ ] **Step 4: Verify**
+
+Run `npx tsc --noEmit` and `npm run lint` — expect no errors. Manually trigger the "Add Team Member" flow with `role` tampered to something outside `agent`/`admin` (e.g. via a direct API call) and confirm a clean 400 `Invalid role.` response instead of the previous opaque 500.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/api/admin/create-user/route.ts CLAUDE.md components/ui/PatchNotesModal.tsx
+git commit -m "fix: allowlist create-user role field, update docs and patch notes"
+```
+
+---
+
+### Task 8: Re-verify after the amendment
+
+**Files:** none (verification only).
+
+**Interfaces:** N/A.
+
+- [ ] **Step 1: Full journey, this time actually draggable**
+
+Log in as `management`: create a new agent via "Add Team Member," confirm they appear in the Unassigned panel, drag them onto a team, confirm they land correctly and disappear from Unassigned.
+
+- [ ] **Step 2: Regression check on existing team columns**
+
+Confirm every existing `PersonCard` inside a `TeamColumn` (leader slot and member list) still shows its "Remove from team" button exactly as before — Task 6 made `onRemove` optional, but `TeamColumn.tsx` still passes it explicitly at both call sites, so nothing there should visually change.
+
+- [ ] **Step 3: Role allowlist check**
+
+Confirm a request to `/api/admin/create-user` with `role` set to anything other than `agent`/`admin` gets a 400 `Invalid role.`, for both `admin` and `management` sessions.
+
+- [ ] **Step 4: Final commit (only if this QA pass found bugs)**
+
+If any step above found an issue, fix it in the relevant file and commit separately with a clear message. If everything passed, say so clearly.
+
+---
+
 ## Plan Self-Review
 
-**Spec coverage:** Route role-gate widening (Task 1), shared modal extraction with identical admin-page behavior preserved (Task 2), the board button + wiring (Task 3), title/label rename (Task 4), cross-role regression + end-to-end QA (Task 5) — every item from the approved design doc (`docs/superpowers/specs/2026-08-09-team-management-add-member-design.md`) is covered: scope (create-account only, not the other admin buttons), Agent/Admin role parity, button placement next to "Add Team", no RLS migration, title-only rename with the URL unchanged.
+**Spec coverage:** Route role-gate widening (Task 1), shared modal extraction with identical admin-page behavior preserved (Task 2), the board button + wiring (Task 3), title/label rename (Task 4), cross-role regression + end-to-end QA (Task 5) — every item from the approved design doc (`docs/superpowers/specs/2026-08-09-team-management-add-member-design.md`) is covered: scope (create-account only, not the other admin buttons), Agent/Admin role parity, button placement next to "Add Team", no RLS migration, title-only rename with the URL unchanged. Tasks 6-8 close the discoverability gap the final review found (Unassigned panel) plus its three Minor findings (role allowlist, `CLAUDE.md`, patch notes) — all traced back to a specific reviewer finding and a recorded human decision, not scope invented mid-flight.
 
 **Placeholder scan:** No TBD/TODO markers. Every step includes the literal code to write.
 
-**Type consistency:** `AddTeamMemberModal`'s `{ open, onClose, onSuccess }` props are used identically at both call sites (Task 2's `AgentManager.tsx`, Task 3's `TeamLeadersBoard.tsx`), matching the exact shape already established by `AddTeamModal.tsx` in the same directory. No new types were introduced that could drift between tasks.
+**Type consistency:** `AddTeamMemberModal`'s `{ open, onClose, onSuccess }` props are used identically at both call sites (Task 2's `AgentManager.tsx`, Task 3's `TeamLeadersBoard.tsx`), matching the exact shape already established by `AddTeamModal.tsx` in the same directory. No new types were introduced that could drift between tasks. `PersonCard`'s newly-optional `onRemove?` (Task 6) is additive — both of `TeamColumn.tsx`'s existing call sites still pass it explicitly, so their behavior is unchanged; only `UnassignedPanel`'s new call site omits it. `UnassignedPanel`'s `PersonLite` type alias matches the one already declared identically in `PersonCard.tsx`, `TeamColumn.tsx`, and `TeamLeadersBoard.tsx`.
