@@ -2,7 +2,7 @@
 
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Pencil, UserMinus } from 'lucide-react'
+import { Pencil, UserMinus, Clock, CheckCircle, XCircle } from 'lucide-react'
 import { Profile } from '@/types'
 
 type PersonLite = Pick<Profile, 'id' | 'full_name' | 'email' | 'role' | 'department' | 'is_active'>
@@ -12,9 +12,11 @@ interface Props {
   isLeader: boolean
   onEdit: (person: PersonLite) => void
   onRemove?: (personId: string) => void
+  onAssignShift?: (personId: string, fullName: string) => void
+  onToggleActive?: (personId: string, isActive: boolean) => void
 }
 
-export default function PersonCard({ person, isLeader, onEdit, onRemove }: Props) {
+export default function PersonCard({ person, isLeader, onEdit, onRemove, onAssignShift, onToggleActive }: Props) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: person.id,
     data: { personId: person.id, role: person.role },
@@ -42,6 +44,16 @@ export default function PersonCard({ person, isLeader, onEdit, onRemove }: Props
       <button type="button" onClick={() => onEdit(person)} className="p-1 text-gray-400 hover:text-blue-600 shrink-0">
         <Pencil className="w-3.5 h-3.5" />
       </button>
+      {onAssignShift && (
+        <button type="button" onClick={() => onAssignShift(person.id, person.full_name)} className="p-1 text-gray-400 hover:text-blue-600 shrink-0" title="Assign shift">
+          <Clock className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {onToggleActive && (
+        <button type="button" onClick={() => onToggleActive(person.id, person.is_active)} className="p-1 text-gray-400 hover:text-red-600 shrink-0" title={person.is_active ? 'Deactivate' : 'Activate'}>
+          {person.is_active ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle className="w-3.5 h-3.5" />}
+        </button>
+      )}
       {onRemove && (
         <button type="button" onClick={() => onRemove(person.id)} className="p-1 text-gray-400 hover:text-red-600 shrink-0" title="Remove from team">
           <UserMinus className="w-3.5 h-3.5" />

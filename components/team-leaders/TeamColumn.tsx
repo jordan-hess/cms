@@ -10,15 +10,18 @@ type PersonLite = Pick<Profile, 'id' | 'full_name' | 'email' | 'role' | 'departm
 
 interface Props {
   column: TeamBoardColumn
+  currentUserId: string
   onEdit: (person: PersonLite) => void
   onRemove: (personId: string, teamId: string, isLeader: boolean) => void
   onAdd: (teamId: string) => void
   onAddLeader: (teamId: string) => void
   onRenameTeam: (team: Team) => void
   onDeleteTeam: (team: Team) => void
+  onAssignShift?: (personId: string, fullName: string) => void
+  onToggleActive?: (personId: string, isActive: boolean) => void
 }
 
-export default function TeamColumn({ column, onEdit, onRemove, onAdd, onAddLeader, onRenameTeam, onDeleteTeam }: Props) {
+export default function TeamColumn({ column, currentUserId, onEdit, onRemove, onAdd, onAddLeader, onRenameTeam, onDeleteTeam, onAssignShift, onToggleActive }: Props) {
   const { team, leader, members } = column
   const c = teamColorClasses[team.color]
 
@@ -55,7 +58,14 @@ export default function TeamColumn({ column, onEdit, onRemove, onAdd, onAddLeade
           }`}
         >
           {leader ? (
-            <PersonCard person={leader} isLeader onEdit={onEdit} onRemove={id => onRemove(id, team.id, true)} />
+            <PersonCard
+              person={leader}
+              isLeader
+              onEdit={onEdit}
+              onRemove={id => onRemove(id, team.id, true)}
+              onAssignShift={leader.id === currentUserId ? undefined : onAssignShift}
+              onToggleActive={leader.id === currentUserId ? undefined : onToggleActive}
+            />
           ) : (
             <p className="text-xs text-gray-400 text-center py-3">Drop someone here to lead this team</p>
           )}
@@ -79,7 +89,15 @@ export default function TeamColumn({ column, onEdit, onRemove, onAdd, onAddLeade
             <p className="text-xs text-gray-400 text-center py-3">No members</p>
           ) : (
             members.map(m => (
-              <PersonCard key={m.id} person={m} isLeader={false} onEdit={onEdit} onRemove={id => onRemove(id, team.id, false)} />
+              <PersonCard
+                key={m.id}
+                person={m}
+                isLeader={false}
+                onEdit={onEdit}
+                onRemove={id => onRemove(id, team.id, false)}
+                onAssignShift={m.id === currentUserId ? undefined : onAssignShift}
+                onToggleActive={m.id === currentUserId ? undefined : onToggleActive}
+              />
             ))
           )}
         </div>
