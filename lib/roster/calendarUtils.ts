@@ -5,6 +5,21 @@ export function formatDateKey(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
+const BUSINESS_TIMEZONE = 'Africa/Johannesburg'
+
+/** Returns "today" as a local Date, resolved in the business's own timezone
+ *  regardless of what timezone the Node process itself is running in. */
+export function getBusinessToday(): Date {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BUSINESS_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+  const [y, m, d] = parts.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
 /** ISO day-of-week: 1=Mon … 7=Sun */
 export function getIsoDayOfWeek(date: Date): number {
   const day = date.getDay()   // 0=Sun
@@ -36,7 +51,6 @@ export function getWeekDays(date: Date): Date[] {
  */
 export function getMonthGridDays(year: number, month: number): Date[] {
   const firstOfMonth = new Date(year, month, 1)
-  const lastOfMonth = new Date(year, month + 1, 0)
 
   const gridStart = getISOWeekStart(firstOfMonth)
 

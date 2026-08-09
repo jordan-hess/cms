@@ -3,7 +3,8 @@ import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import Header from '@/components/layout/Header'
 import DashboardContent, { DashboardStat } from '@/components/dashboard/DashboardContent'
 import ConsoleDesktop from '@/components/console/ConsoleDesktop'
-import { formatDateKey, getISOWeekStart } from '@/lib/roster/calendarUtils'
+import { formatDateKey, getISOWeekStart, getBusinessToday } from '@/lib/roster/calendarUtils'
+import { AttendanceRecord, RosterOverride } from '@/types'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -37,37 +38,52 @@ export default async function DashboardPage() {
   if (profile?.role === 'admin' || profile?.role === 'management') {
     let managementData
     if (profile.role === 'management') {
-      const now = new Date()
+      const now = getBusinessToday()
       const todayIso = formatDateKey(now)
       const weekStart = formatDateKey(getISOWeekStart(now))
 
       const [
-        { data: agents },
-        { data: teamMembers },
-        { data: teamRotations },
-        { data: attendanceRecords },
-        { data: rosterOverrides },
-        { data: teamLeaders },
+        { data: agents, error: agentsErr },
+        { data: teamMembers, error: teamMembersErr },
+        { data: teamRotations, error: teamRotationsErr },
+        { data: attendanceRecords, error: attendanceRecordsErr },
+        { data: rosterOverrides, error: rosterOverridesErr },
+        { data: teamLeaders, error: teamLeadersErr },
       ] = await Promise.all([
-        supabase.from('profiles').select('id, full_name').eq('role', 'agent').eq('is_active', true),
+        supabase.from('profiles').select('id, full_name').eq('role', 'agent').eq('is_active', true).order('full_name'),
         supabase.from('team_members').select('id, team_id, profile_id, joined_at'),
         supabase.from('team_rotations').select('*, shift_templates(*)').eq('week_start_date', weekStart),
-        supabase.from('attendance_records').select('*').eq('date', todayIso),
-        supabase.from('roster_overrides').select('*, shift_templates(*)').eq('date', todayIso),
+        supabase.from('attendance_records').select('id, profile_id, date, status').eq('date', todayIso),
+        supabase.from('roster_overrides').select('id, profile_id, date, override_type, shift_templates(id, name, start_time, end_time)').eq('date', todayIso),
         supabase.from('team_leaders').select('id, profile_id, profiles!team_leaders_profile_id_fkey(id, full_name, is_active)'),
       ])
 
-      const leaders = (teamLeaders || [])
-        .map((tl: any) => tl.profiles)
-        .filter((p: any) => p != null && p.is_active)
-        .map((p: any) => ({ id: p.id, full_name: p.full_name }))
+      if (agentsErr) console.error('[dashboard] failed to fetch agents for Management console:', agentsErr)
+      if (teamMembersErr) console.error('[dashboard] failed to fetch teamMembers for Management console:', teamMembersErr)
+      if (teamRotationsErr) console.error('[dashboard] failed to fetch teamRotations for Management console:', teamRotationsErr)
+      if (attendanceRecordsErr) console.error('[dashboard] failed to fetch attendanceRecords for Management console:', attendanceRecordsErr)
+      if (rosterOverridesErr) console.error('[dashboard] failed to fetch rosterOverrides for Management console:', rosterOverridesErr)
+      if (teamLeadersErr) console.error('[dashboard] failed to fetch teamLeaders for Management console:', teamLeadersErr)
+
+      const leaders = Array.from(
+        new Map(
+          (teamLeaders || [])
+            .map((tl: any) => tl.profiles)
+            .filter((p: any) => p != null && p.is_active)
+            .map((p: any) => [p.id, { id: p.id, full_name: p.full_name }]),
+        ).values(),
+      )
+      leaders.sort((a, b) => a.full_name.localeCompare(b.full_name))
 
       managementData = {
         agents: agents || [],
         teamMembers: teamMembers || [],
         teamRotations: teamRotations || [],
-        attendanceRecords: attendanceRecords || [],
-        rosterOverrides: rosterOverrides || [],
+        // Narrowed selects above only fetch the columns this feature reads; cast back to
+        // the shared roster types (whose extra fields — notes, marked_by, etc. — are
+        // never accessed by ManagementConsole/resolveShift) rather than widening the select.
+        attendanceRecords: (attendanceRecords || []) as AttendanceRecord[],
+        rosterOverrides: (rosterOverrides || []) as unknown as RosterOverride[],
         leaders,
         todayIso,
       }

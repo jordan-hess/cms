@@ -17,6 +17,7 @@ export default function AttendanceCategoryRow({ label, colorClasses, people }: A
       <button
         type="button"
         onClick={() => setExpanded(v => !v)}
+        aria-expanded={expanded}
         className="w-full flex items-center justify-between px-3 py-2"
       >
         <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
