@@ -96,6 +96,20 @@ export interface Notification {
   followups?: Pick<Followup, 'type' | 'status' | 'customer_id'>
 }
 
+export interface FollowupStatusHistory {
+  id: string
+  followup_id: string
+  changed_by: string
+  from_status: FollowupStatus
+  to_status: FollowupStatus
+  comment: string | null
+  changed_at: string
+  profiles?: Pick<Profile, 'full_name'>
+}
+
+/** Shared shape for the "Assign to" candidate pool (agents ∪ team leaders) */
+export type FollowupAssignee = Pick<Profile, 'id' | 'full_name' | 'email'>
+
 // ─── Roster ──────────────────────────────────────────────────────────────────
 
 export type TeamColor = 'green' | 'blue' | 'red' | 'yellow'
