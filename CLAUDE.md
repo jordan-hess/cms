@@ -51,7 +51,7 @@ app/
   page.tsx                # Redirects → /dashboard
   login/page.tsx          # Public, client component
   login/legacy/page.tsx   # Legacy Supabase-Auth sign-in (dual-login grace window)
-  api/admin/create-user/  # Service-role user creation (admin only)
+  api/admin/create-user/  # Service-role user creation (admin or management)
   (app)/                  # Protected route group
     layout.tsx            # Auth check + Sidebar
     dashboard/            # Agent home (stats, upcoming items)

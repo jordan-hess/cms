@@ -30,6 +30,9 @@ export async function POST(request: Request) {
   if (!email || !full_name || !password || !role) {
     return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 })
   }
+  if (role !== 'agent' && role !== 'admin') {
+    return NextResponse.json({ error: 'Invalid role.' }, { status: 400 })
+  }
 
   const adminSupabase = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

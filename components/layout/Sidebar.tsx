@@ -232,7 +232,7 @@ export default function Sidebar({ profile }: SidebarProps) {
             onClick={() => setPatchNotesOpen(true)}
             className="w-full text-center text-xs text-gray-600 hover:text-gray-400 transition-colors pt-2"
           >
-            v0.2.0
+            v0.3.0
           </button>
         </div>
       </div>

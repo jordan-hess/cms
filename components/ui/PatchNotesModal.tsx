@@ -10,6 +10,15 @@ interface PatchNote {
 
 const PATCH_NOTES: PatchNote[] = [
   {
+    version: 'v0.3.0',
+    date: '2026-08-09',
+    changes: [
+      'Management can now create new team member accounts directly from the Team Management page via an "Add Team Member" button, without leaving the board',
+      'The Team Management board now shows an "Unassigned" section for people who aren’t on a team yet',
+      'Renamed the "Team Leaders Management" page and nav link to "Team Management"',
+    ],
+  },
+  {
     version: 'v0.2.0',
     date: '2026-08-08',
     changes: [
