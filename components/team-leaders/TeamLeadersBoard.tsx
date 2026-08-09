@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { Team, TeamMember, TeamLeader, Profile, Role, TeamBoardColumn } from '@/types'
+import { Team, TeamMember, TeamLeader, Profile, Role, TeamBoardColumn, ShiftTemplate } from '@/types'
 import TeamColumn from './TeamColumn'
 import EditPersonModal from './EditPersonModal'
 import AddToTeamModal from './AddToTeamModal'
@@ -14,6 +14,7 @@ import AddTeamModal from './AddTeamModal'
 import EditTeamNameModal from './EditTeamNameModal'
 import AddTeamMemberModal from './AddTeamMemberModal'
 import UnassignedPanel from './UnassignedPanel'
+import AssignShiftModal from '@/components/roster/admin/AssignShiftModal'
 
 type ProfileLite = Pick<Profile, 'id' | 'full_name' | 'email' | 'role' | 'department' | 'is_active'>
 
@@ -23,9 +24,11 @@ interface Props {
   teamLeaders: TeamLeader[]
   allProfiles: ProfileLite[]
   currentUserId: string
+  isAdminView?: boolean
+  shiftTemplates?: ShiftTemplate[]
 }
 
-export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allProfiles, currentUserId }: Props) {
+export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allProfiles, currentUserId, isAdminView = false, shiftTemplates = [] }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -37,6 +40,7 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
   const [addingTeam, setAddingTeam] = useState(false)
   const [addingTeamMember, setAddingTeamMember] = useState(false)
   const [renamingTeam, setRenamingTeam] = useState<Team | null>(null)
+  const [assignShiftPerson, setAssignShiftPerson] = useState<{ id: string; full_name: string } | null>(null)
 
   function findProfile(id: string) {
     return allProfiles.find(p => p.id === id)
@@ -55,7 +59,7 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
     return { team, leader, members }
   })
 
-  const unassigned = allProfiles.filter(p => p.is_active && !teamMembers.some(tm => tm.profile_id === p.id))
+  const unassigned = allProfiles.filter(p => (isAdminView || p.is_active) && !teamMembers.some(tm => tm.profile_id === p.id))
 
   async function moveToTeam(personId: string, newTeamId: string) {
     setError('')
@@ -135,6 +139,16 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
     router.refresh()
   }
 
+  async function handleToggleActive(personId: string, isActive: boolean) {
+    setError('')
+    const { error: err } = await supabase.from('profiles').update({ is_active: !isActive }).eq('id', personId)
+    if (err) { setError('Could not update status — please try again.'); return }
+    router.refresh()
+  }
+
+  const onAssignShift = isAdminView ? (id: string, fullName: string) => setAssignShiftPerson({ id, full_name: fullName }) : undefined
+  const onToggleActive = isAdminView ? handleToggleActive : undefined
+
   return (
     <DndContext id="team-leaders-board" sensors={sensors} onDragEnd={handleDragEnd}>
       <div className="space-y-4">
@@ -155,18 +169,27 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
             <Plus className="w-4 h-4" /> Add Team
           </button>
         </div>
-        <UnassignedPanel people={unassigned} onEdit={setEditingPerson} />
+        <UnassignedPanel
+          people={unassigned}
+          currentUserId={currentUserId}
+          onEdit={setEditingPerson}
+          onAssignShift={onAssignShift}
+          onToggleActive={onToggleActive}
+        />
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {columns.map(column => (
             <TeamColumn
               key={column.team.id}
               column={column}
+              currentUserId={currentUserId}
               onEdit={setEditingPerson}
               onRemove={handleRemoveFromTeam}
               onAdd={setAddingToTeamId}
               onAddLeader={setAddingLeaderToTeamId}
               onRenameTeam={setRenamingTeam}
               onDeleteTeam={handleDeleteTeam}
+              onAssignShift={onAssignShift}
+              onToggleActive={onToggleActive}
             />
           ))}
         </div>
@@ -176,6 +199,7 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
         key={editingPerson?.id ?? 'edit-modal-closed'}
         person={editingPerson}
         isCurrentlyLeading={editingPerson ? teamLeaders.some(tl => tl.profile_id === editingPerson.id) : false}
+        currentUserId={currentUserId}
         onClose={() => setEditingPerson(null)}
         onSuccess={() => { setEditingPerson(null); router.refresh() }}
       />
@@ -211,6 +235,17 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
         onClose={() => setRenamingTeam(null)}
         onSuccess={() => { setRenamingTeam(null); router.refresh() }}
       />
+      {isAdminView && (
+        <AssignShiftModal
+          open={!!assignShiftPerson}
+          onClose={() => setAssignShiftPerson(null)}
+          onSuccess={() => { setAssignShiftPerson(null); router.refresh() }}
+          profileId={assignShiftPerson?.id ?? ''}
+          profileName={assignShiftPerson?.full_name ?? ''}
+          shiftTemplates={shiftTemplates}
+          currentUserId={currentUserId}
+        />
+      )}
     </DndContext>
   )
 }
