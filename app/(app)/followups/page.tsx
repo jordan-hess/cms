@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
 import Header from '@/components/layout/Header'
 import FollowupManager from '@/components/followups/FollowupManager'
-import { FollowupStatusHistory, FollowupAssignee } from '@/types'
+import { FollowupAssignee } from '@/types'
 
 export default async function FollowupsPage() {
   const supabase = await createClient()
@@ -29,11 +29,6 @@ export default async function FollowupsPage() {
     supabase.from('customers').select('id, name, phone').order('name', { ascending: true }),
   ])
 
-  const ids = (followups || []).map(f => f.id)
-  const { data: statusHistory } = ids.length
-    ? await supabase.from('followup_status_history').select('*, profiles(full_name)').in('followup_id', ids).order('changed_at', { ascending: true })
-    : { data: [] as FollowupStatusHistory[] }
-
   let agentCandidates: FollowupAssignee[] = []
   let teamLeaderCandidates: { profile_id: string; profiles: (FollowupAssignee & { is_active: boolean }) | null }[] = []
 
@@ -46,6 +41,11 @@ export default async function FollowupsPage() {
       supabase.from('team_leaders').select('profile_id, profiles!team_leaders_profile_id_fkey(id, full_name, email, is_active)'),
     ])
     agentCandidates = agents || []
+    // team_leaders/profiles is genuinely a to-one relationship at runtime (one
+    // profile per team_leaders row via profile_id), but without generated
+    // Supabase `Database` types, PostgREST's inferred embed shape doesn't
+    // structurally match this hand-written type, so TS rejects a direct cast
+    // (TS2352). The `unknown` step is required, not optional simplification.
     teamLeaderCandidates = (leaders || []) as unknown as typeof teamLeaderCandidates
   }
 
@@ -61,7 +61,6 @@ export default async function FollowupsPage() {
           isManagement={isManagement}
           agentCandidates={agentCandidates}
           teamLeaderCandidates={teamLeaderCandidates}
-          statusHistory={statusHistory || []}
         />
       </div>
     </div>

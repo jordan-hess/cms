@@ -1,21 +1,21 @@
 -- ============================================================
--- Restore the notifications INSERT policy to match what's
--- checked into supabase/schema.sql (WITH CHECK (TRUE)).
+-- NOTE: this migration turned out to be an unnecessary no-op.
 --
--- Found during QA of the management-followups feature: the LIVE
--- policy no longer matched the checked-in schema — it silently
--- rejected any notification insert where the recipient wasn't
--- the inserting user themselves (confirmed live: agent
--- self-notify succeeded, but agent/admin/management notifying
--- someone ELSE all failed with 42501). This has been silently
--- breaking the "notify the assignee" step in the existing
--- Escalations feature (whose insert error was never checked) and
--- would have done the same to this new feature's assign/reassign
--- notifications.
+-- During QA of the management-followups feature, a live RLS test
+-- appeared to show notifications INSERT was broken for anyone
+-- notifying someone other than themselves. The real cause was the
+-- test's own use of `Prefer: return=representation` on the insert,
+-- which triggers a read-back of the inserted row gated by the
+-- SELECT policy (`recipient_id = auth.uid()`), not the INSERT
+-- policy — unrelated to whether the insert itself was allowed.
+-- Retesting with `Prefer: return=minimal` (matching how the real
+-- app calls `.insert()`, which never chains `.select()`) succeeded
+-- immediately. The live INSERT policy was never actually broken.
 --
--- Run this in the Supabase SQL Editor.
--- Safe to run on a live database — the policy is dropped and
--- recreated; no data or table changes.
+-- This file is a harmless, byte-identical re-assertion of the
+-- policy already defined in supabase/schema.sql. Kept for the
+-- record rather than deleted, so the false alarm and its
+-- self-correction aren't silently erased from history.
 -- ============================================================
 
 DROP POLICY IF EXISTS "Authenticated users can insert notifications" ON notifications;

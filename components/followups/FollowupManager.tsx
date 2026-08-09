@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Modal from '@/components/ui/Modal'
@@ -19,7 +19,6 @@ interface Props {
   isManagement?: boolean
   agentCandidates?: FollowupAssignee[]
   teamLeaderCandidates?: { profile_id: string; profiles: (FollowupAssignee & { is_active: boolean }) | null }[]
-  statusHistory?: FollowupStatusHistory[]
 }
 
 const priorityBadge = {
@@ -46,7 +45,7 @@ const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-
 
 export default function FollowupManager({
   followups, customers, userId, isAdmin,
-  isManagement = false, agentCandidates = [], teamLeaderCandidates = [], statusHistory = [],
+  isManagement = false, agentCandidates = [], teamLeaderCandidates = [],
 }: Props) {
   const router = useRouter()
   const supabase = createClient()
@@ -57,15 +56,7 @@ export default function FollowupManager({
   const [form, setForm] = useState(empty)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-
-  const historyByFollowup = useMemo(() => {
-    const map: Record<string, FollowupStatusHistory[]> = {}
-    for (const item of statusHistory) {
-      if (!map[item.followup_id]) map[item.followup_id] = []
-      map[item.followup_id].push(item)
-    }
-    return map
-  }, [statusHistory])
+  const [history, setHistory] = useState<FollowupStatusHistory[]>([])
 
   const filtered = followups.filter(f => {
     const statusMatch = filter === 'all' || f.status === filter
@@ -73,7 +64,7 @@ export default function FollowupManager({
     return statusMatch && typeMatch
   })
 
-  function openAdd() { setEditing(null); setForm(empty); setError(''); setModal(true) }
+  function openAdd() { setEditing(null); setForm(empty); setError(''); setHistory([]); setModal(true) }
   function openEdit(fu: Followup) {
     setEditing(fu)
     setForm({
@@ -86,7 +77,14 @@ export default function FollowupManager({
       status: fu.status,
     })
     setError('')
+    setHistory([])
     setModal(true)
+    supabase
+      .from('followup_status_history')
+      .select('*, profiles(full_name)')
+      .eq('followup_id', fu.id)
+      .order('changed_at', { ascending: true })
+      .then(({ data }) => setHistory(data || []))
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -120,11 +118,11 @@ export default function FollowupManager({
 
   async function updateStatus(id: string, status: FollowupStatus) {
     const current = followups.find(f => f.id === id)
-    await supabase.from('followups').update({
+    const { error } = await supabase.from('followups').update({
       status,
       resolved_at: status === 'resolved' ? new Date().toISOString() : null,
     }).eq('id', id)
-    if (current && current.status !== status) {
+    if (!error && current && current.status !== status) {
       await insertFollowupHistory(supabase, id, userId, current.status, status)
     }
     router.refresh()
@@ -231,18 +229,20 @@ export default function FollowupManager({
       )}
 
       {isManagement ? (
-        <ManagementFollowupModal
-          key={editing?.id ?? 'add'}
-          open={modal}
-          onClose={() => setModal(false)}
-          editing={editing}
-          customers={customers}
-          agentCandidates={agentCandidates}
-          teamLeaderCandidates={teamLeaderCandidates}
-          history={editing ? historyByFollowup[editing.id] ?? [] : []}
-          userId={userId}
-          onSaved={() => { setModal(false); router.refresh() }}
-        />
+        modal && (
+          <ManagementFollowupModal
+            key={editing?.id ?? 'add'}
+            open={modal}
+            onClose={() => setModal(false)}
+            editing={editing}
+            customers={customers}
+            agentCandidates={agentCandidates}
+            teamLeaderCandidates={teamLeaderCandidates}
+            history={history}
+            userId={userId}
+            onSaved={() => { setModal(false); router.refresh() }}
+          />
+        )
       ) : (
         <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Edit Follow-up' : 'Add Follow-up'}>
           <form onSubmit={handleSave} className="space-y-4">
@@ -290,7 +290,7 @@ export default function FollowupManager({
             {editing && (
               <div>
                 <p className={labelCls}>Status History</p>
-                <StatusHistoryTimeline items={historyByFollowup[editing.id] ?? []} />
+                <StatusHistoryTimeline items={history} />
               </div>
             )}
             {error && <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/30 rounded-lg px-3 py-2">{error}</p>}

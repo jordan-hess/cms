@@ -109,6 +109,8 @@ Team-leader tables: `team_leaders` — defined in `supabase/team-leaders-schema.
 
 Coaching tables (management-only feature): `coaching_agent_checkins` (team-leader↔agent 1-on-1 completion), `coaching_leader_checkins` (management↔team-leader check-in completion) — both keyed per `profile_id` + `period_month`, defined in `supabase/coaching-schema.sql`.
 
+Post-deploy RLS/schema patches applied incrementally after initial setup live in `supabase/migrations/` — run each new file once, live, against the Supabase SQL Editor when it's added.
+
 Foreign key joins use Supabase's inline select syntax:
 ```ts
 supabase.from('followups').select('*, customers(name), profiles!followups_created_by_fkey(full_name)')

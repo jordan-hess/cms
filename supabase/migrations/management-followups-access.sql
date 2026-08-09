@@ -20,7 +20,7 @@ CREATE POLICY "Agents see assigned followups" ON followups FOR SELECT TO authent
 
 DROP POLICY IF EXISTS "Agents update assigned followups" ON followups;
 CREATE POLICY "Agents update assigned followups" ON followups FOR UPDATE TO authenticated USING (
-  agent_id = auth.uid() OR created_by = auth.uid() OR
+  agent_id = auth.uid() OR
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'management'))
 );
 
@@ -32,7 +32,7 @@ CREATE POLICY "Agents update assigned followups" ON followups FOR UPDATE TO auth
 -- Immutable audit log, universal (every followup, any creator). No UPDATE
 -- or DELETE policies are granted.
 
-CREATE TABLE followup_status_history (
+CREATE TABLE IF NOT EXISTS followup_status_history (
   id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   followup_id  uuid        NOT NULL REFERENCES followups(id) ON DELETE CASCADE,
   changed_by   uuid        NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT,
@@ -42,13 +42,14 @@ CREATE TABLE followup_status_history (
   changed_at   timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_followup_status_history_followup_id ON followup_status_history (followup_id);
-CREATE INDEX idx_followup_status_history_changed_by ON followup_status_history (changed_by);
-CREATE INDEX idx_followup_status_history_changed_at ON followup_status_history (changed_at);
+CREATE INDEX IF NOT EXISTS idx_followup_status_history_followup_id ON followup_status_history (followup_id);
+CREATE INDEX IF NOT EXISTS idx_followup_status_history_changed_by ON followup_status_history (changed_by);
+CREATE INDEX IF NOT EXISTS idx_followup_status_history_changed_at ON followup_status_history (changed_at);
 
 ALTER TABLE followup_status_history ENABLE ROW LEVEL SECURITY;
 
 -- SELECT: anyone who can already see the parent followup can see its history.
+DROP POLICY IF EXISTS "followup_status_history_select" ON followup_status_history;
 CREATE POLICY "followup_status_history_select" ON followup_status_history
   FOR SELECT TO authenticated
   USING (
@@ -68,6 +69,7 @@ CREATE POLICY "followup_status_history_select" ON followup_status_history
 -- themselves too, not just admin/management — mirrors "Agents update
 -- assigned followups" above, plus requires changed_by to match the caller
 -- (no writing history on someone else's behalf).
+DROP POLICY IF EXISTS "followup_status_history_insert" ON followup_status_history;
 CREATE POLICY "followup_status_history_insert" ON followup_status_history
   FOR INSERT TO authenticated
   WITH CHECK (
