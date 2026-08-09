@@ -13,6 +13,7 @@ import AddTeamLeaderModal from './AddTeamLeaderModal'
 import AddTeamModal from './AddTeamModal'
 import EditTeamNameModal from './EditTeamNameModal'
 import AddTeamMemberModal from './AddTeamMemberModal'
+import UnassignedPanel from './UnassignedPanel'
 
 type ProfileLite = Pick<Profile, 'id' | 'full_name' | 'email' | 'role' | 'department' | 'is_active'>
 
@@ -154,6 +155,7 @@ export default function TeamLeadersBoard({ teams, teamMembers, teamLeaders, allP
             <Plus className="w-4 h-4" /> Add Team
           </button>
         </div>
+        <UnassignedPanel people={unassigned} onEdit={setEditingPerson} />
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {columns.map(column => (
             <TeamColumn

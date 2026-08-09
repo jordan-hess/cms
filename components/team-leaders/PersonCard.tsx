@@ -11,7 +11,7 @@ interface Props {
   person: PersonLite
   isLeader: boolean
   onEdit: (person: PersonLite) => void
-  onRemove: (personId: string) => void
+  onRemove?: (personId: string) => void
 }
 
 export default function PersonCard({ person, isLeader, onEdit, onRemove }: Props) {
@@ -42,9 +42,11 @@ export default function PersonCard({ person, isLeader, onEdit, onRemove }: Props
       <button type="button" onClick={() => onEdit(person)} className="p-1 text-gray-400 hover:text-blue-600 shrink-0">
         <Pencil className="w-3.5 h-3.5" />
       </button>
-      <button type="button" onClick={() => onRemove(person.id)} className="p-1 text-gray-400 hover:text-red-600 shrink-0" title="Remove from team">
-        <UserMinus className="w-3.5 h-3.5" />
-      </button>
+      {onRemove && (
+        <button type="button" onClick={() => onRemove(person.id)} className="p-1 text-gray-400 hover:text-red-600 shrink-0" title="Remove from team">
+          <UserMinus className="w-3.5 h-3.5" />
+        </button>
+      )}
     </div>
   )
 }
