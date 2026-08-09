@@ -27,7 +27,7 @@ function getPrimaryLinks(role: Role) {
       ? { href: '/coaching', label: 'Coaching', icon: Handshake }
       : { href: '/customers', label: 'Customers', icon: Users },
     role === 'management'
-      ? { href: '/team-leaders', label: 'Team Leaders Management', icon: Users2 }
+      ? { href: '/team-leaders', label: 'Team Management', icon: Users2 }
       : { href: '/callbacks', label: 'Callbacks', icon: Phone },
     { href: '/followups', label: 'Follow-ups', icon: FileText },
     { href: '/roster', label: 'Team Roster', icon: CalendarDays },

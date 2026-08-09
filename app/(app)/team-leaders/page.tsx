@@ -27,7 +27,7 @@ export default async function TeamLeadersPage() {
 
   return (
     <div>
-      <Header title="Team Leaders Management" userId={userId!} />
+      <Header title="Team Management" userId={userId!} />
       <div className="p-6">
         <TeamLeadersBoard
           teams={teams || []}
