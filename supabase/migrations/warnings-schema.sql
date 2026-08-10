@@ -9,7 +9,7 @@
 -- Safe to run on a live database — additive only.
 -- ============================================================
 
-CREATE TABLE warnings (
+CREATE TABLE IF NOT EXISTS warnings (
   id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   issued_to   uuid        NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   issued_by   uuid        NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT,
@@ -19,18 +19,20 @@ CREATE TABLE warnings (
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_warnings_issued_to  ON warnings (issued_to);
-CREATE INDEX idx_warnings_issued_by  ON warnings (issued_by);
-CREATE INDEX idx_warnings_type       ON warnings (type);
-CREATE INDEX idx_warnings_created_at ON warnings (created_at);
+CREATE INDEX IF NOT EXISTS idx_warnings_issued_to  ON warnings (issued_to);
+CREATE INDEX IF NOT EXISTS idx_warnings_issued_by  ON warnings (issued_by);
+CREATE INDEX IF NOT EXISTS idx_warnings_type       ON warnings (type);
+CREATE INDEX IF NOT EXISTS idx_warnings_created_at ON warnings (created_at);
 
 -- Reuse the set_updated_at() function already created by schema.sql
+DROP TRIGGER IF EXISTS trg_warnings_updated_at ON warnings;
 CREATE TRIGGER trg_warnings_updated_at
   BEFORE UPDATE ON warnings FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 ALTER TABLE warnings ENABLE ROW LEVEL SECURITY;
 
 -- INSERT: issuer must actually be entitled to warn this specific target.
+DROP POLICY IF EXISTS "warnings_insert" ON warnings;
 CREATE POLICY "warnings_insert" ON warnings FOR INSERT TO authenticated WITH CHECK (
   issued_by = auth.uid()
   AND (
@@ -44,6 +46,7 @@ CREATE POLICY "warnings_insert" ON warnings FOR INSERT TO authenticated WITH CHE
     (
       EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
       AND is_submitter_team_leader(auth.uid())
+      AND issued_to <> auth.uid()
       AND EXISTS (
         SELECT 1 FROM team_members tm
         JOIN team_leaders tl ON tl.team_id = tm.team_id
@@ -62,11 +65,13 @@ CREATE POLICY "warnings_insert" ON warnings FOR INSERT TO authenticated WITH CHE
 
 -- SELECT: same three-way scoping as INSERT, keyed off the row's issued_to;
 -- management gets blanket visibility across both audiences.
+DROP POLICY IF EXISTS "warnings_select" ON warnings;
 CREATE POLICY "warnings_select" ON warnings FOR SELECT TO authenticated USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'management')
   OR (
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
     AND is_submitter_team_leader(auth.uid())
+    AND warnings.issued_to <> auth.uid()
     AND EXISTS (
       SELECT 1 FROM team_members tm
       JOIN team_leaders tl ON tl.team_id = tm.team_id
@@ -81,5 +86,7 @@ CREATE POLICY "warnings_select" ON warnings FOR SELECT TO authenticated USING (
 );
 
 -- UPDATE/DELETE: issuer only, regardless of role or view scope.
+DROP POLICY IF EXISTS "warnings_update" ON warnings;
 CREATE POLICY "warnings_update" ON warnings FOR UPDATE TO authenticated USING (issued_by = auth.uid());
+DROP POLICY IF EXISTS "warnings_delete" ON warnings;
 CREATE POLICY "warnings_delete" ON warnings FOR DELETE TO authenticated USING (issued_by = auth.uid());
