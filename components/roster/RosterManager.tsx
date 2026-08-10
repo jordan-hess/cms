@@ -20,6 +20,7 @@ import MarkAttendanceModal from './admin/MarkAttendanceModal'
 import RosterOverrideModal from './admin/RosterOverrideModal'
 import RequestsPanel from '@/components/requests/RequestsPanel'
 import TeamRequestsModal from './admin/TeamRequestsModal'
+import AdminRequestsPanel from './admin/AdminRequestsPanel'
 import { Settings2, RotateCcw, Users2, CalendarPlus, Inbox } from 'lucide-react'
 
 type AdminModal = 'assignTeam' | 'shiftTemplate' | 'assignRotation' | 'markAttendance' | 'rosterOverride' | null
@@ -34,6 +35,7 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
   const router = useRouter()
   const { profile, teams, allProfiles, shiftTemplates, rotations, attendanceRecords, overrides, userTeam, myRequests, pendingRequests, teamLeaderTeamIds = [] } = data
   const isAdmin = profile.role === 'admin'
+  const isManagement = profile.role === 'management'
   const isTeamLeader = teamLeaderTeamIds.length > 0
 
   const [view, setView] = useState<CalendarView>('month')
@@ -170,7 +172,7 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
         >
           <Inbox className="w-4 h-4" />
           Requests
-          {isAdmin && pendingCount > 0 && (
+          {(isAdmin || isManagement) && pendingCount > 0 && (
             <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-xs w-4 h-4 flex items-center justify-center rounded-full font-semibold leading-none">
               {pendingCount > 9 ? '9+' : pendingCount}
             </span>
@@ -225,11 +227,21 @@ export default function RosterManager({ data }: { data: RosterPageData }) {
         />
       )}
 
-      {/* Admin: Team Requests Management Modal | Agent: Request submission panel */}
-      {isAdmin ? (
+      {/* Management: approve team-leader requests | Admin: My Requests + Team Requests tabs | Agent: submission panel */}
+      {isManagement ? (
         <TeamRequestsModal
           open={requestsPanelOpen}
           onClose={() => setRequestsPanelOpen(false)}
+          requests={scopedPendingRequests}
+          currentUserId={profile.id}
+          onRefresh={() => router.refresh()}
+        />
+      ) : isAdmin ? (
+        <AdminRequestsPanel
+          open={requestsPanelOpen}
+          onClose={() => setRequestsPanelOpen(false)}
+          profile={profile}
+          userTeam={userTeam}
           requests={scopedPendingRequests}
           currentUserId={profile.id}
           onRefresh={() => router.refresh()}
