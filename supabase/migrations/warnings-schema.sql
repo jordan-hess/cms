@@ -47,6 +47,7 @@ CREATE POLICY "warnings_insert" ON warnings FOR INSERT TO authenticated WITH CHE
       EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
       AND is_submitter_team_leader(auth.uid())
       AND issued_to <> auth.uid()
+      AND EXISTS (SELECT 1 FROM profiles WHERE id = issued_to AND role = 'agent')
       AND EXISTS (
         SELECT 1 FROM team_members tm
         JOIN team_leaders tl ON tl.team_id = tm.team_id
@@ -72,6 +73,7 @@ CREATE POLICY "warnings_select" ON warnings FOR SELECT TO authenticated USING (
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
     AND is_submitter_team_leader(auth.uid())
     AND warnings.issued_to <> auth.uid()
+    AND EXISTS (SELECT 1 FROM profiles WHERE id = warnings.issued_to AND role = 'agent')
     AND EXISTS (
       SELECT 1 FROM team_members tm
       JOIN team_leaders tl ON tl.team_id = tm.team_id
@@ -90,3 +92,20 @@ DROP POLICY IF EXISTS "warnings_update" ON warnings;
 CREATE POLICY "warnings_update" ON warnings FOR UPDATE TO authenticated USING (issued_by = auth.uid());
 DROP POLICY IF EXISTS "warnings_delete" ON warnings;
 CREATE POLICY "warnings_delete" ON warnings FOR DELETE TO authenticated USING (issued_by = auth.uid());
+
+-- Enforce issued_to immutability after creation — RLS's WITH CHECK cannot
+-- reference OLD, so this invariant (already enforced client-side by the
+-- UI's disabled target field) needs a trigger, not a policy change.
+CREATE OR REPLACE FUNCTION prevent_warning_retarget()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.issued_to IS DISTINCT FROM OLD.issued_to THEN
+    RAISE EXCEPTION 'warnings.issued_to cannot be changed after creation';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_warnings_prevent_retarget ON warnings;
+CREATE TRIGGER trg_warnings_prevent_retarget
+  BEFORE UPDATE ON warnings FOR EACH ROW EXECUTE FUNCTION prevent_warning_retarget();

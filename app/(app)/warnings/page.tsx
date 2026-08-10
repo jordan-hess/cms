@@ -52,12 +52,12 @@ export default async function WarningsPage() {
     const teamIds = (teamLeaderRows ?? []).map(r => r.team_id)
     const { data: members } = await supabase
       .from('team_members')
-      .select('profiles(id, full_name, email)')
+      .select('profiles(id, full_name, email, role)')
       .in('team_id', teamIds)
     const map = new Map<string, WarningTargetCandidate>()
     for (const row of members ?? []) {
-      const p = row.profiles as unknown as WarningTargetCandidate | null
-      if (p && !map.has(p.id)) map.set(p.id, p)
+      const p = row.profiles as unknown as (WarningTargetCandidate & { role: string }) | null
+      if (p && p.id !== userId && p.role === 'agent' && !map.has(p.id)) map.set(p.id, p)
     }
     targetCandidates = Array.from(map.values())
   } else if (isAdmin) {
