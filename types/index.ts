@@ -287,6 +287,25 @@ export interface RequestWithDetail extends Request {
   overtime_requests?: (OvertimeRequest & { overtime_entries?: OvertimeEntry[] })[]
 }
 
+// ─── Warnings ─────────────────────────────────────────────────────────────────
+
+export type WarningType = 'verbal' | 'written' | 'final'
+
+export interface Warning {
+  id: string
+  issued_to: string
+  issued_by: string
+  type: WarningType
+  reason: string
+  created_at: string
+  updated_at: string
+  target?: Pick<Profile, 'id' | 'full_name' | 'email' | 'role'>
+  issuer?: Pick<Profile, 'id' | 'full_name' | 'email'>
+}
+
+/** Shared shape for the "who can I warn" target-candidate pool */
+export type WarningTargetCandidate = Pick<Profile, 'id' | 'full_name' | 'email'>
+
 // ─── Coaching ─────────────────────────────────────────────────────────────────
 
 export interface CoachingAgentCheckin {
