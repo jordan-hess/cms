@@ -19,6 +19,9 @@ export default async function RosterPage() {
 
   if (!profile) redirect('/login')
 
+  const isAdmin = profile.role === 'admin'
+  const isManagement = profile.role === 'management'
+
   const now = new Date()
   const { from, to } = getRosterFetchRange(now.getFullYear(), now.getMonth())
 
@@ -38,7 +41,6 @@ export default async function RosterPage() {
     { data: attendanceRecords },
     { data: overrides },
     { data: myRequests },
-    { data: pendingRequests },
     { data: teamLeaderRows },
   ] = await Promise.all([
     supabase
@@ -75,19 +77,36 @@ export default async function RosterPage() {
       .select(requestDetailSelect)
       .eq('profile_id', userId)
       .order('created_at', { ascending: false }),
-    // Admin: all pending requests (RLS returns empty for agents)
-    profile.role === 'admin'
-      ? supabase
-          .from('requests')
-          .select(requestDetailSelect)
-          .eq('status', 'pending')
-          .order('created_at', { ascending: false })
-      : Promise.resolve({ data: [] }),
-    // Team leader team IDs for the current admin (empty for agents)
-    profile.role === 'admin'
+    // Team leader team IDs for the current admin (empty for agents/management)
+    isAdmin
       ? supabase.from('team_leaders').select('team_id').eq('profile_id', userId)
       : Promise.resolve({ data: [] }),
   ])
+
+  // Pending requests: admin sees all; management sees only requests
+  // submitted by a team leader; agent gets none (RLS returns empty either
+  // way, but skipping the query avoids an unnecessary round trip).
+  let pendingRequests: RequestWithDetail[] = []
+  if (isAdmin) {
+    const { data } = await supabase
+      .from('requests')
+      .select(requestDetailSelect)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+    pendingRequests = (data ?? []) as RequestWithDetail[]
+  } else if (isManagement) {
+    const { data: teamLeaderProfileRows } = await supabase.from('team_leaders').select('profile_id')
+    const teamLeaderProfileIds = [...new Set((teamLeaderProfileRows ?? []).map((r: { profile_id: string }) => r.profile_id))]
+    if (teamLeaderProfileIds.length) {
+      const { data } = await supabase
+        .from('requests')
+        .select(requestDetailSelect)
+        .eq('status', 'pending')
+        .in('profile_id', teamLeaderProfileIds)
+        .order('created_at', { ascending: false })
+      pendingRequests = (data ?? []) as RequestWithDetail[]
+    }
+  }
 
   // Derive the current user's team from the team_members data
   const flatMembers: TeamMember[] = (teams ?? []).flatMap((t: Team & { team_members: TeamMember[] }) => t.team_members ?? [])
@@ -108,7 +127,7 @@ export default async function RosterPage() {
     overrides: overrides ?? [],
     userTeam,
     myRequests: (myRequests ?? []) as RequestWithDetail[],
-    pendingRequests: (pendingRequests ?? []) as RequestWithDetail[],
+    pendingRequests,
     teamLeaderTeamIds,
   }
 
