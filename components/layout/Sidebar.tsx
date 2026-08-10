@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Users, Phone, FileText, ShieldAlert, LogOut, UserCog,
   CalendarDays, Settings, Inbox, Pencil, Eye, EyeOff, Check, Handshake, Users2,
+  AlertTriangle,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { createLegacyAuthClient } from '@/lib/supabase/legacyAuthClient'
@@ -21,7 +22,7 @@ interface SidebarProps {
 }
 
 function getPrimaryLinks(role: Role) {
-  return [
+  const links = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     role === 'management'
       ? { href: '/coaching', label: 'Coaching', icon: Handshake }
@@ -32,6 +33,10 @@ function getPrimaryLinks(role: Role) {
     { href: '/followups', label: 'Follow-ups', icon: FileText },
     { href: '/roster', label: 'Team Roster', icon: CalendarDays },
   ]
+  if (role !== 'agent') {
+    links.push({ href: '/warnings', label: 'Warnings', icon: AlertTriangle })
+  }
+  return links
 }
 
 const adminLinks = [
