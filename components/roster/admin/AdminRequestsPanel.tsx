@@ -123,7 +123,9 @@ export default function AdminRequestsPanel({ open, onClose, profile, userTeam, r
         </div>
 
         {tab === 'mine' ? (
-          <MyRequestsBody profile={profile} userTeam={userTeam} onSuccess={() => { onRefresh(); handleClose() }} />
+          <div className="flex-1 flex flex-col bg-gray-900 overflow-hidden">
+            <MyRequestsBody profile={profile} userTeam={userTeam} onSuccess={() => { onRefresh(); handleClose() }} />
+          </div>
         ) : (
           <TeamRequestsBody requests={requests} currentUserId={currentUserId} onRefresh={onRefresh} />
         )}

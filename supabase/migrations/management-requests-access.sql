@@ -210,11 +210,11 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF NOT is_submitter_team_leader(NEW.profile_id) THEN
-    RETURN NEW;
-  END IF;
-
   BEGIN
+    IF NOT is_submitter_team_leader(NEW.profile_id) THEN
+      RETURN NEW;
+    END IF;
+
     SELECT full_name INTO v_requester_name FROM profiles WHERE id = NEW.profile_id;
 
     v_type_label := CASE NEW.type
@@ -244,6 +244,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+DROP TRIGGER IF EXISTS trg_notify_management_on_team_leader_request ON requests;
 CREATE TRIGGER trg_notify_management_on_team_leader_request
   AFTER INSERT ON requests
   FOR EACH ROW EXECUTE FUNCTION notify_management_on_team_leader_request();
