@@ -1,4 +1,4 @@
-export type ConsoleKind = 'teamleader' | 'agents' | 'management'
+export type ConsoleKind = 'teamleader' | 'agents' | 'management' | 'teamleader-overview'
 export type WindowStatus = 'open' | 'minimized' | 'closed'
 
 export interface WindowConfig {
