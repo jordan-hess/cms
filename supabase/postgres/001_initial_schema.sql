@@ -1,5 +1,5 @@
 -- ============================================================
--- Neon-target consolidated schema (Phase 0 of the Supabase migration)
+-- Azure Database for PostgreSQL (SIT) target: consolidated schema (Phase 0 of the Supabase migration)
 --
 -- This is a consolidated CURRENT-STATE port of everything live in Supabase
 -- today (supabase/schema.sql + roster-schema.sql + roster-multi-rotation-
@@ -47,7 +47,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS pgcrypto; -- gen_random_uuid(); no-op if already core on this PG version
 
--- ─── Neon-specific: identity plumbing that Supabase normally provides ─────
+-- ─── Plain-Postgres identity plumbing that Supabase normally provides ─────
 
 CREATE OR REPLACE FUNCTION current_uid() RETURNS uuid
 LANGUAGE sql STABLE
@@ -784,10 +784,12 @@ GRANT USAGE ON SCHEMA public TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
 
--- The app's actual Neon connection role must be granted membership in both
--- roles once known, e.g.: GRANT authenticated, service_role TO neondb_owner;
--- (substitute the real role name Neon assigns). Left as a manual step since
--- that role name doesn't exist until the Neon project is created.
+-- The app's actual Azure Database for PostgreSQL connection role must be
+-- granted membership in both roles once known, e.g.:
+-- GRANT authenticated, service_role TO <your-admin-username>;
+-- (substitute the actual admin username chosen when the Azure Postgres
+-- Flexible Server instance is provisioned). Left as a manual step since
+-- that role name doesn't exist until the instance is created.
 
 -- Belt-and-suspenders on top of RLS (per the plan's "RLS decision"): make the
 -- append-only guarantee on request_approval_history hold even if a future

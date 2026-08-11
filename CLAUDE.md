@@ -115,3 +115,7 @@ Foreign key joins use Supabase's inline select syntax:
 ```ts
 supabase.from('followups').select('*, customers(name), profiles!followups_created_by_fkey(full_name)')
 ```
+
+### Future migration scaffolding (dormant)
+
+`lib/db/client.ts`, `lib/db/withUserContext.ts`, and `supabase/postgres/001_initial_schema.sql` are unused-today groundwork for a planned future move off Supabase Postgres, targeting Azure Database for PostgreSQL (a "SIT" environment tier). Nothing in the live app imports these files yet — `DATABASE_URL` is unset, and no route uses them. Do not treat their presence as evidence the app has actually migrated.

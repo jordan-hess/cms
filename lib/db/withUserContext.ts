@@ -6,7 +6,7 @@ import { getDb } from './client'
  * The single choke point every write path (Server Components, API routes,
  * the dev seed script) must go through instead of importing getDb()
  * directly — this is what makes current_uid() (see
- * supabase/neon/001_initial_schema.sql) resolve correctly inside RLS
+ * supabase/postgres/001_initial_schema.sql) resolve correctly inside RLS
  * policies, preserving the "authorization holds regardless of call path"
  * guarantee the original Supabase/RLS design had. See "The RLS decision" in
  * the migration plan for why this replaces app-layer-only checks rather
@@ -38,7 +38,7 @@ export async function withUserContext<T>(
  * Escape hatch for the one legitimate no-user-context case: service-role
  * scripts that must bypass per-user RLS entirely (e.g. the eventual
  * replacement for scripts/setup-dev-users.mjs). Requires the `service_role`
- * Postgres role (BYPASSRLS, created in supabase/neon/001_initial_schema.sql)
+ * Postgres role (BYPASSRLS, created in supabase/postgres/001_initial_schema.sql)
  * to exist and the app's connecting role to have been granted membership in
  * it. Named loudly and intended to be used nowhere else, mirroring this
  * repo's existing "service-role client constructed in exactly one place"
