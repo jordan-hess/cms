@@ -17,7 +17,7 @@ import { getDb } from './client'
  * the callback shape rather than a plain "set it and move on" call.
  *
  * NOT YET VERIFIED END-TO-END: there is no live Postgres connection in this
- * environment yet (Neon setup was deferred). This has been written
+ * environment yet (no SIT instance has been provisioned yet). This has been written
  * correctly against the Drizzle/postgres-js API but the actual
  * SET LOCAL + RLS enforcement round-trip needs to be exercised against a
  * real database before Phase 0 can be considered complete — see the plan's
