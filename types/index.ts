@@ -135,6 +135,18 @@ export interface TeamMember {
   profiles?: Pick<Profile, 'id' | 'full_name' | 'email' | 'is_active'>
 }
 
+/** One management-dashboard console: a team leader's team's aggregated agent activity */
+export interface TeamLeaderConsoleData {
+  teamId: string
+  teamName: string
+  teamColor: TeamColor
+  leaderName: string
+  totalCustomers: number
+  pendingCallbacks: number
+  openFollowups: number
+  unreadAlerts: number
+}
+
 export interface ShiftTemplate {
   id: string
   name: string
