@@ -78,13 +78,15 @@ export default async function DashboardPage() {
 
       // Per-team-leader dashboard console aggregates — reuses teamMembers/teamLeaders
       // already fetched above, adds 4 bulk queries scoped to every team's agents at once.
+      const activeAgentIds = new Set((agents || []).map(a => a.id))
+      const activeTeamMembers = (teamMembers || []).filter(tm => activeAgentIds.has(tm.profile_id))
       const membersByTeam = new Map<string, string[]>()
-      for (const tm of teamMembers || []) {
+      for (const tm of activeTeamMembers) {
         const list = membersByTeam.get(tm.team_id) ?? []
         list.push(tm.profile_id)
         membersByTeam.set(tm.team_id, list)
       }
-      const allAgentIds = [...new Set((teamMembers || []).map(tm => tm.profile_id))]
+      const allAgentIds = [...new Set(activeTeamMembers.map(tm => tm.profile_id))]
 
       const [
         { data: allCustomers, error: allCustomersErr },
