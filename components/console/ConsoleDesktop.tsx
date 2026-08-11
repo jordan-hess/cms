@@ -9,13 +9,16 @@ import TeamleadersConsole from './TeamleadersConsole'
 import AgentsConsole from './AgentsConsole'
 import ManagementConsole from './ManagementConsole'
 import type { ManagementConsoleProps } from './ManagementConsole'
+import TeamLeaderOverviewConsole from './TeamLeaderOverviewConsole'
 import { DashboardContentProps } from '@/components/dashboard/DashboardContent'
+import { TeamLeaderConsoleData } from '@/types'
 import { loadWindowGeometry, saveWindowGeometry } from '@/lib/console/windowPersistence'
 
 export interface ConsoleDesktopProps {
   role: 'admin' | 'management'
   dashboardData: DashboardContentProps
   managementData?: ManagementConsoleProps
+  teamLeaderConsoles?: TeamLeaderConsoleData[]
 }
 
 // Keep at least this much width and the full title bar height reachable within the
@@ -23,7 +26,7 @@ export interface ConsoleDesktopProps {
 const MIN_REACHABLE_WIDTH = 120
 const MIN_REACHABLE_HEIGHT = 48
 
-export default function ConsoleDesktop({ role, dashboardData, managementData }: ConsoleDesktopProps) {
+export default function ConsoleDesktop({ role, dashboardData, managementData, teamLeaderConsoles }: ConsoleDesktopProps) {
   const [windows, setWindows] = useState<WindowState[]>(() => buildInitialWindowStates(role))
   const [bounds, setBounds] = useState({ width: 0, height: 0 })
   const desktopRef = useRef<HTMLDivElement>(null)
@@ -121,6 +124,8 @@ export default function ConsoleDesktop({ role, dashboardData, managementData }: 
         return <AgentsConsole />
       case 'management':
         return managementData ? <ManagementConsole {...managementData} /> : null
+      case 'teamleader-overview':
+        return <TeamLeaderOverviewConsole consoles={teamLeaderConsoles ?? []} />
     }
   }
 
