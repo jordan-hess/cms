@@ -1,13 +1,14 @@
 'use client'
 
 import { forwardRef } from 'react'
-import { LayoutDashboard, Users, Building2 } from 'lucide-react'
+import { LayoutDashboard, Users, Building2, Users2 } from 'lucide-react'
 import { ConsoleKind, WindowState } from './types'
 
 const ICONS: Record<ConsoleKind, typeof LayoutDashboard> = {
   teamleader: LayoutDashboard,
   agents: Users,
   management: Building2,
+  'teamleader-overview': Users2,
 }
 
 export interface DockProps {
