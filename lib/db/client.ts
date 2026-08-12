@@ -22,7 +22,11 @@ export function getDb(): PostgresJsDatabase {
     )
   }
 
-  // Azure Database for PostgreSQL Flexible Server enforces SSL by default.
-  cached = drizzle(postgres(url, { max: 10, ssl: 'require' }))
+  // No `ssl` option here deliberately — postgres.js reads `sslmode` straight
+  // out of the connection string when `ssl` isn't passed explicitly, and SSL
+  // support varies by target (the current SIT cluster has it intentionally
+  // disabled). Set `?sslmode=require`/`disable`/etc. on DATABASE_URL itself
+  // rather than hardcoding a mode here.
+  cached = drizzle(postgres(url, { max: 10 }))
   return cached
 }

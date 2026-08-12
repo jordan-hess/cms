@@ -2,28 +2,53 @@
 -- Azure Database for PostgreSQL (SIT) target: consolidated schema (Phase 0 of the Supabase migration)
 --
 -- This is a consolidated CURRENT-STATE port of everything live in Supabase
--- today (supabase/schema.sql + roster-schema.sql + roster-multi-rotation-
--- migration.sql + requests-schema.sql + team-leaders-schema.sql +
--- add-management-role.sql + migrations/*.sql), not a replay of migration
--- history. Superseded policies (e.g. the pre-team-leader versions of the
--- requests/leave_requests/overtime_requests/overtime_entries policies) are
--- omitted entirely rather than created-then-dropped.
+-- today, regenerated from a live `pg_dump --schema-only` against the actual
+-- Supabase project (2026-08-11) rather than replayed from migration files —
+-- migration files can lag or never get applied (e.g. callback_id/
+-- callbacks.created_by/reminder_sent below exist in migration files but were
+-- never actually run against production; ported here anyway as the
+-- dormant, ready-but-never-enabled feature they already were).
 --
--- Two deliberate differences from the Supabase original, both required
--- because this runs on plain Postgres (no Supabase platform underneath):
+-- Three deliberate differences from the Supabase original, all required
+-- because this runs on plain Postgres with a single connecting role that
+-- cannot create new Postgres roles (a hard constraint of the target
+-- environment — see below):
 --
 -- 1. `auth.uid()` -> `current_uid()`. Supabase's `auth.uid()` reads a JWT
 --    claim that PostgREST injects into the session per-request. On plain
 --    Postgres there is no PostgREST, so `current_uid()` (defined below)
 --    reads a session-local setting instead. The app's data-access layer
 --    must call `SET LOCAL app.current_user_id = '<uuid>'` at the start of
---    every transaction (see the planned `withUserContext()` wrapper) for
---    every one of these ~64 policies to keep working exactly as before.
+--    every transaction (see lib/db/withUserContext.ts's withUserContext())
+--    for every one of these policies to keep working exactly as before.
 --
--- 2. The Supabase-only `authenticated` Postgres role does not exist here.
---    It's created below and granted table-level access; RLS policies keep
---    using `TO authenticated` unchanged. The app's Postgres connection
---    role must be a member of `authenticated` (see grants at the bottom).
+-- 2. No `authenticated`/`service_role` Postgres roles. The originally
+--    planned design mirrored Supabase's role-based RLS (a Postgres role per
+--    audience, BYPASSRLS for the service role) — but the target environment's
+--    connecting role (the app's single DB user) is not permitted to
+--    CREATE ROLE, by company policy, and no admin path exists to pre-create
+--    these roles either. Every policy below therefore applies to PUBLIC (no
+--    `TO` clause) and is gated purely by `current_uid()` / role checks
+--    against `profiles`, never by Postgres role membership.
+--
+-- 3. FORCE ROW LEVEL SECURITY + a session bypass flag instead of a
+--    BYPASSRLS role. Postgres exempts a table's OWNING role from that
+--    table's own RLS by default — and since the app's single connecting
+--    role owns every table here, RLS would silently do nothing at all
+--    unless every table opts out of that exemption via
+--    `ALTER TABLE ... FORCE ROW LEVEL SECURITY` (below). With FORCE enabled,
+--    the old `service_role` escape hatch (`SET LOCAL ROLE service_role`,
+--    which needed a role to switch into) becomes a session GUC instead:
+--    `SET LOCAL app.bypass_rls = 'true'` (see withServiceRole() in
+--    lib/db/withUserContext.ts). Every policy below ORs in
+--    `current_setting('app.bypass_rls', true) = 'true'` as its first
+--    condition, reproducing the same "trusted service code can see/write
+--    everything" guarantee without needing BYPASSRLS or a second role.
+--    request_approval_history has no UPDATE/DELETE policy at all (append-
+--    only, matching the original design's intent) — with FORCE enabled and
+--    no such policy, even the bypass flag cannot make those operations
+--    succeed, which is a strictly stronger guarantee than the original
+--    plan's role-GRANT-based REVOKE.
 --
 -- Intentionally NOT ported: `handle_new_user()` / the `on_auth_user_created`
 -- trigger on `auth.users`. That trigger fires on Supabase's own internal
@@ -31,16 +56,14 @@
 -- application code in the Phase 1 auth cutover instead (both the admin
 -- user-provisioning path and first-time Microsoft/Entra ID SSO login must
 -- insert into `profiles` themselves).
---
--- Known gap surfaced while writing this port: `roster-schema.sql` and
--- `requests-schema.sql` both reference a `set_updated_at()` trigger
--- function that is never defined in any committed SQL file in this repo.
--- It must have been created directly in the Supabase SQL Editor at some
--- point and never saved. Reconstructed below with the same, obvious body
--- as the sibling `update_updated_at()` function (there is no ambiguity in
--- what this function does) -- flagged here so it's not mistaken for
--- something exotic.
 -- ============================================================
+
+-- Runs as one atomic transaction — required so the SET LOCAL app.bypass_rls
+-- below (see "Seed data") has a transaction to be local to. Without an
+-- explicit BEGIN, most SQL clients (including plain `psql -f`) autocommit
+-- every top-level statement separately, which both breaks SET LOCAL and
+-- means a failure partway through leaves a half-applied schema behind.
+BEGIN;
 
 -- ─── Extensions ────────────────────────────────────────────────────────────
 
@@ -53,26 +76,8 @@ CREATE OR REPLACE FUNCTION current_uid() RETURNS uuid
 LANGUAGE sql STABLE
 AS $$ SELECT NULLIF(current_setting('app.current_user_id', true), '')::uuid $$;
 
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-    CREATE ROLE authenticated NOLOGIN;
-  END IF;
-END
-$$;
-
--- Mirrors Supabase's service_role: bypasses RLS entirely. Used only via
--- lib/db/withUserContext.ts's withServiceRole() escape hatch (SET LOCAL ROLE
--- service_role inside a transaction), never for ordinary request handling —
--- same one-legitimate-use-site convention this repo already follows for the
--- Supabase service-role client.
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-    CREATE ROLE service_role NOLOGIN BYPASSRLS;
-  END IF;
-END
-$$;
+-- No CREATE ROLE here — see point 2 in the header comment. Every policy
+-- below applies to PUBLIC and checks current_uid()/profiles.role directly.
 
 -- ─── Tables ────────────────────────────────────────────────────────────────
 
@@ -85,6 +90,7 @@ CREATE TABLE profiles (
   avatar_url TEXT,
   is_active BOOLEAN DEFAULT TRUE,
   force_password_change BOOLEAN DEFAULT FALSE,
+  password_hash TEXT, -- Auth.js credential verification (Phase 1 cutover); NULL for SSO-only accounts
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -105,14 +111,14 @@ CREATE TABLE callbacks (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   customer_id UUID REFERENCES customers(id) ON DELETE CASCADE NOT NULL,
   agent_id UUID REFERENCES profiles(id) NOT NULL,
-  created_by UUID REFERENCES profiles(id),
+  created_by UUID REFERENCES profiles(id), -- dormant: see callback reminder note near send_callback_reminders() below
   scheduled_at TIMESTAMPTZ NOT NULL,
   query_description TEXT NOT NULL,
   possible_solution TEXT,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'cancelled', 'rescheduled')),
   notes TEXT,
   completed_at TIMESTAMPTZ,
-  reminder_sent BOOLEAN DEFAULT FALSE,
+  reminder_sent BOOLEAN DEFAULT FALSE, -- dormant: see callback reminder note near send_callback_reminders() below
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -134,16 +140,29 @@ CREATE TABLE followups (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE followup_status_history (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  followup_id UUID NOT NULL REFERENCES followups(id) ON DELETE CASCADE,
+  changed_by UUID NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT,
+  from_status TEXT NOT NULL,
+  to_status TEXT NOT NULL,
+  comment TEXT,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_followup_status_history_followup_id ON followup_status_history (followup_id);
+CREATE INDEX idx_followup_status_history_changed_by  ON followup_status_history (changed_by);
+CREATE INDEX idx_followup_status_history_changed_at  ON followup_status_history (changed_at);
+
 CREATE TABLE notifications (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   recipient_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   sender_id UUID REFERENCES profiles(id),
   followup_id UUID REFERENCES followups(id) ON DELETE CASCADE,
-  callback_id UUID REFERENCES callbacks(id) ON DELETE CASCADE,
+  callback_id UUID REFERENCES callbacks(id) ON DELETE CASCADE, -- dormant: see callback reminder note near send_callback_reminders() below
   request_id UUID, -- FK added below, after `requests` exists
   title TEXT NOT NULL,
   message TEXT NOT NULL,
-  type TEXT DEFAULT 'info' CHECK (type IN ('info', 'followup', 'escalation', 'reminder', 'request', 'callback')),
+  type TEXT DEFAULT 'info' CHECK (type IN ('info', 'followup', 'escalation', 'reminder', 'request', 'callback', 'warning')),
   read BOOLEAN DEFAULT FALSE,
   read_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -309,6 +328,57 @@ CREATE INDEX idx_approval_history_request_id ON request_approval_history (reques
 CREATE INDEX idx_approval_history_changed_by ON request_approval_history (changed_by);
 CREATE INDEX idx_approval_history_changed_at ON request_approval_history (changed_at);
 
+-- Has this AGENT's 1-on-1 with their team leader been done, for a given
+-- month? Attribution to "which leader's card" is resolved at query time
+-- via team_members -> team_leaders, not stored here.
+CREATE TABLE coaching_agent_checkins (
+  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  profile_id    uuid        NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  period_month  date        NOT NULL CHECK (period_month = date_trunc('month', period_month)::date),
+  done          boolean     NOT NULL DEFAULT false,
+  completed_at  timestamptz,
+  marked_by     uuid        REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (profile_id, period_month)
+);
+CREATE INDEX idx_coaching_agent_checkins_period  ON coaching_agent_checkins (period_month);
+CREATE INDEX idx_coaching_agent_checkins_profile ON coaching_agent_checkins (profile_id);
+
+-- Has MANAGEMENT personally done their check-in with this TEAM LEADER,
+-- for a given month? One row per leader per period regardless of how
+-- many teams that leader leads.
+CREATE TABLE coaching_leader_checkins (
+  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  profile_id    uuid        NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  period_month  date        NOT NULL CHECK (period_month = date_trunc('month', period_month)::date),
+  done          boolean     NOT NULL DEFAULT false,
+  completed_at  timestamptz,
+  marked_by     uuid        REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (profile_id, period_month)
+);
+CREATE INDEX idx_coaching_leader_checkins_period  ON coaching_leader_checkins (period_month);
+CREATE INDEX idx_coaching_leader_checkins_profile ON coaching_leader_checkins (profile_id);
+
+-- Team leaders issue verbal/written/final warnings to their own team's
+-- agents; plain (non-leading) admins issue them to any agent org-wide;
+-- management issues them to team leaders.
+CREATE TABLE warnings (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  issued_to   uuid        NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  issued_by   uuid        NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT,
+  type        text        NOT NULL CHECK (type IN ('verbal', 'written', 'final')),
+  reason      text        NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_warnings_issued_to  ON warnings (issued_to);
+CREATE INDEX idx_warnings_issued_by  ON warnings (issued_by);
+CREATE INDEX idx_warnings_type       ON warnings (type);
+CREATE INDEX idx_warnings_created_at ON warnings (created_at);
+
 -- ─── Trigger functions ─────────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -316,7 +386,6 @@ RETURNS TRIGGER AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $$ LANGUAGE plpgsql;
 
--- Reconstructed — see the "Known gap" note at the top of this file.
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
@@ -408,6 +477,67 @@ RETURNS boolean AS $$
   );
 $$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public;
 
+-- Distinct from is_team_leader_for(team_id), which checks whether the
+-- CURRENT user leads a given team. This checks whether an arbitrary
+-- profile (e.g. a request's submitter) leads ANY team.
+CREATE OR REPLACE FUNCTION is_submitter_team_leader(p_profile_id uuid)
+RETURNS boolean AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM team_leaders WHERE profile_id = p_profile_id
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public;
+
+-- Mirrors notify_team_leader_on_request, but the recipient pool has no
+-- natural 1-per-team uniqueness the way team_leaders does, so this loops
+-- over every management-role profile instead of picking a single LIMIT 1.
+-- Runs alongside notify_team_leader_on_request (not instead of) — that
+-- trigger already skips notifying a leader about their own submission, so
+-- the two triggers never double-notify the same recipient for one request.
+CREATE OR REPLACE FUNCTION notify_management_on_team_leader_request()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_requester_name text;
+  v_type_label     text;
+  v_mgmt           record;
+BEGIN
+  IF NEW.status <> 'pending' THEN
+    RETURN NEW;
+  END IF;
+
+  BEGIN
+    IF NOT is_submitter_team_leader(NEW.profile_id) THEN
+      RETURN NEW;
+    END IF;
+
+    SELECT full_name INTO v_requester_name FROM profiles WHERE id = NEW.profile_id;
+
+    v_type_label := CASE NEW.type
+      WHEN 'leave'    THEN 'leave'
+      WHEN 'overtime' THEN 'overtime'
+      ELSE NEW.type
+    END;
+
+    FOR v_mgmt IN SELECT id FROM profiles WHERE role = 'management' LOOP
+      INSERT INTO notifications (
+        recipient_id, sender_id, request_id, title, message, type
+      ) VALUES (
+        v_mgmt.id,
+        NEW.profile_id,
+        NEW.id,
+        'New ' || v_type_label || ' request',
+        COALESCE(v_requester_name, 'A team leader') || ' has submitted a ' || v_type_label || ' request requiring your review.',
+        'request'
+      );
+    END LOOP;
+
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
 CREATE OR REPLACE FUNCTION reset_callback_reminder()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -419,9 +549,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Called by an app-level scheduler (Vercel Cron / external cron -> an internal
--- API route), not pg_cron — see the plan's "Scheduled reminders" decision.
--- This job has never been enabled in production; porting it as dormant, ready
--- code, same as it is today.
+-- API route), not pg_cron. This job (and callbacks.created_by/reminder_sent,
+-- notifications.callback_id above) has never been enabled in production —
+-- ported as dormant, ready code, same as it is today.
 CREATE OR REPLACE FUNCTION send_callback_reminders()
 RETURNS void
 LANGUAGE plpgsql
@@ -449,6 +579,16 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION prevent_warning_retarget()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.issued_to IS DISTINCT FROM OLD.issued_to THEN
+    RAISE EXCEPTION 'warnings.issued_to cannot be changed after creation';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
 -- ─── Triggers ──────────────────────────────────────────────────────────────
 
 CREATE TRIGGER profiles_updated_at BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -464,6 +604,12 @@ CREATE TRIGGER trg_attendance_records_updated_at
   BEFORE UPDATE ON attendance_records FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_requests_updated_at
   BEFORE UPDATE ON requests FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_coaching_agent_checkins_updated_at
+  BEFORE UPDATE ON coaching_agent_checkins FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_coaching_leader_checkins_updated_at
+  BEFORE UPDATE ON coaching_leader_checkins FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_warnings_updated_at
+  BEFORE UPDATE ON warnings FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_enforce_team_leader_is_admin
   BEFORE INSERT OR UPDATE ON team_leaders
@@ -473,330 +619,599 @@ CREATE TRIGGER trg_notify_team_leader_on_request
   AFTER INSERT ON requests
   FOR EACH ROW EXECUTE FUNCTION notify_team_leader_on_request();
 
+CREATE TRIGGER trg_notify_management_on_team_leader_request
+  AFTER INSERT ON requests
+  FOR EACH ROW EXECUTE FUNCTION notify_management_on_team_leader_request();
+
 CREATE TRIGGER callbacks_reset_reminder
   BEFORE UPDATE ON callbacks
   FOR EACH ROW EXECUTE FUNCTION reset_callback_reminder();
+
+CREATE TRIGGER trg_warnings_prevent_retarget
+  BEFORE UPDATE ON warnings FOR EACH ROW EXECUTE FUNCTION prevent_warning_retarget();
 
 -- Intentionally NOT created: on_auth_user_created AFTER INSERT ON auth.users.
 -- See the note at the top of this file.
 
 -- ─── Row Level Security ────────────────────────────────────────────────────
+-- ENABLE alone is not enough here: the app's single connecting role OWNS
+-- every one of these tables, and Postgres exempts owners from their own
+-- RLS by default. FORCE closes that exemption — see point 3 in the header
+-- comment.
 
-ALTER TABLE profiles                 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE customers                ENABLE ROW LEVEL SECURITY;
-ALTER TABLE callbacks                ENABLE ROW LEVEL SECURITY;
-ALTER TABLE followups                ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notifications            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE password_reset_requests  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE teams                    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE team_members             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE shift_templates          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE team_rotations           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE attendance_records       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE roster_overrides         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE requests                 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE leave_requests           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE overtime_requests        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE overtime_entries         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE team_leaders             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE request_approval_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles                 ENABLE ROW LEVEL SECURITY; ALTER TABLE profiles                 FORCE ROW LEVEL SECURITY;
+ALTER TABLE customers                ENABLE ROW LEVEL SECURITY; ALTER TABLE customers                FORCE ROW LEVEL SECURITY;
+ALTER TABLE callbacks                ENABLE ROW LEVEL SECURITY; ALTER TABLE callbacks                FORCE ROW LEVEL SECURITY;
+ALTER TABLE followups                ENABLE ROW LEVEL SECURITY; ALTER TABLE followups                FORCE ROW LEVEL SECURITY;
+ALTER TABLE followup_status_history  ENABLE ROW LEVEL SECURITY; ALTER TABLE followup_status_history  FORCE ROW LEVEL SECURITY;
+ALTER TABLE notifications            ENABLE ROW LEVEL SECURITY; ALTER TABLE notifications            FORCE ROW LEVEL SECURITY;
+ALTER TABLE password_reset_requests  ENABLE ROW LEVEL SECURITY; ALTER TABLE password_reset_requests  FORCE ROW LEVEL SECURITY;
+ALTER TABLE teams                    ENABLE ROW LEVEL SECURITY; ALTER TABLE teams                    FORCE ROW LEVEL SECURITY;
+ALTER TABLE team_members             ENABLE ROW LEVEL SECURITY; ALTER TABLE team_members             FORCE ROW LEVEL SECURITY;
+ALTER TABLE shift_templates          ENABLE ROW LEVEL SECURITY; ALTER TABLE shift_templates          FORCE ROW LEVEL SECURITY;
+ALTER TABLE team_rotations           ENABLE ROW LEVEL SECURITY; ALTER TABLE team_rotations           FORCE ROW LEVEL SECURITY;
+ALTER TABLE attendance_records       ENABLE ROW LEVEL SECURITY; ALTER TABLE attendance_records       FORCE ROW LEVEL SECURITY;
+ALTER TABLE roster_overrides         ENABLE ROW LEVEL SECURITY; ALTER TABLE roster_overrides         FORCE ROW LEVEL SECURITY;
+ALTER TABLE requests                 ENABLE ROW LEVEL SECURITY; ALTER TABLE requests                 FORCE ROW LEVEL SECURITY;
+ALTER TABLE leave_requests           ENABLE ROW LEVEL SECURITY; ALTER TABLE leave_requests           FORCE ROW LEVEL SECURITY;
+ALTER TABLE overtime_requests        ENABLE ROW LEVEL SECURITY; ALTER TABLE overtime_requests        FORCE ROW LEVEL SECURITY;
+ALTER TABLE overtime_entries         ENABLE ROW LEVEL SECURITY; ALTER TABLE overtime_entries         FORCE ROW LEVEL SECURITY;
+ALTER TABLE team_leaders             ENABLE ROW LEVEL SECURITY; ALTER TABLE team_leaders             FORCE ROW LEVEL SECURITY;
+ALTER TABLE request_approval_history ENABLE ROW LEVEL SECURITY; ALTER TABLE request_approval_history FORCE ROW LEVEL SECURITY;
+ALTER TABLE coaching_agent_checkins  ENABLE ROW LEVEL SECURITY; ALTER TABLE coaching_agent_checkins  FORCE ROW LEVEL SECURITY;
+ALTER TABLE coaching_leader_checkins ENABLE ROW LEVEL SECURITY; ALTER TABLE coaching_leader_checkins FORCE ROW LEVEL SECURITY;
+ALTER TABLE warnings                 ENABLE ROW LEVEL SECURITY; ALTER TABLE warnings                 FORCE ROW LEVEL SECURITY;
 
 -- profiles
-CREATE POLICY "Profiles viewable by authenticated users" ON profiles FOR SELECT TO authenticated USING (TRUE);
-CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE TO authenticated USING (current_uid() = id);
-CREATE POLICY "Admins can update any profile" ON profiles FOR UPDATE TO authenticated USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+CREATE POLICY "Profiles viewable by authenticated users" ON profiles FOR SELECT USING (TRUE);
+CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR current_uid() = id
+) WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  (current_uid() = id AND role = (SELECT p.role FROM profiles p WHERE p.id = current_uid()))
 );
-CREATE POLICY "Admins can insert profiles" ON profiles FOR INSERT TO authenticated WITH CHECK (
-  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+CREATE POLICY "Admins can update any profile" ON profiles FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+) WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  (
+    EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+    AND (current_uid() <> id OR role = (SELECT p.role FROM profiles p WHERE p.id = current_uid()))
+  )
+);
+CREATE POLICY "Admins can insert profiles" ON profiles FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
 );
 
 -- customers
-CREATE POLICY "All users see all customers" ON customers FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Agents can insert customers" ON customers FOR INSERT TO authenticated WITH CHECK (current_uid() = created_by);
-CREATE POLICY "Agents can update their customers" ON customers FOR UPDATE TO authenticated USING (
+CREATE POLICY "All users see all customers" ON customers FOR SELECT USING (true);
+CREATE POLICY "Agents can insert customers" ON customers FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR current_uid() = created_by
+);
+CREATE POLICY "Agents can update their customers" ON customers FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
   created_by = current_uid() OR
   EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
 );
 
 -- callbacks
-CREATE POLICY "Agents see their own callbacks" ON callbacks FOR SELECT TO authenticated USING (
+CREATE POLICY "Agents see their own callbacks" ON callbacks FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
   agent_id = current_uid() OR
-  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
 );
-CREATE POLICY "Users can insert callbacks" ON callbacks FOR INSERT TO authenticated WITH CHECK (
-  agent_id = current_uid() OR
-  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+CREATE POLICY "Agents can insert callbacks" ON callbacks FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR agent_id = current_uid()
 );
-CREATE POLICY "Agents can update their callbacks" ON callbacks FOR UPDATE TO authenticated USING (
+CREATE POLICY "Agents can update their callbacks" ON callbacks FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
   agent_id = current_uid() OR
   EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
 );
 
 -- followups
-CREATE POLICY "Agents see assigned followups" ON followups FOR SELECT TO authenticated USING (
+CREATE POLICY "Agents see assigned followups" ON followups FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
   agent_id = current_uid() OR created_by = current_uid() OR
-  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
 );
-CREATE POLICY "Authenticated users can insert followups" ON followups FOR INSERT TO authenticated WITH CHECK (current_uid() = created_by);
-CREATE POLICY "Agents update assigned followups" ON followups FOR UPDATE TO authenticated USING (
+CREATE POLICY "Authenticated users can insert followups" ON followups FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR current_uid() = created_by
+);
+CREATE POLICY "Agents update assigned followups" ON followups FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
   agent_id = current_uid() OR
-  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
 );
 
--- password_reset_requests
-CREATE POLICY "Admins see all reset requests" ON password_reset_requests FOR SELECT TO authenticated USING (
+-- followup_status_history (append-only: SELECT + INSERT policies only)
+CREATE POLICY "followup_status_history_select" ON followup_status_history FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM followups f
+    WHERE f.id = followup_status_history.followup_id
+      AND (
+        f.agent_id = current_uid() OR f.created_by = current_uid() OR
+        EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+      )
+  )
+);
+CREATE POLICY "followup_status_history_insert" ON followup_status_history FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  (
+    changed_by = current_uid()
+    AND EXISTS (
+      SELECT 1 FROM followups f
+      WHERE f.id = followup_status_history.followup_id
+        AND (
+          f.agent_id = current_uid() OR f.created_by = current_uid() OR
+          EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+        )
+    )
+  )
+);
+
+-- password_reset_requests (INSERT has no ordinary-user path — Supabase's
+-- original had no INSERT policy either, since inserts went through the
+-- service-role API key, which bypassed RLS entirely at the connection
+-- level. That mechanism doesn't exist here, so this needs an explicit
+-- bypass-only policy or the equivalent app/api/auth/request-password-reset
+-- route can never insert a row at all.)
+CREATE POLICY "password_reset_requests_insert" ON password_reset_requests FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true'
+);
+CREATE POLICY "Admins see all reset requests" ON password_reset_requests FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
   EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
 );
-CREATE POLICY "Users see own reset requests" ON password_reset_requests FOR SELECT TO authenticated USING (
-  profile_id = current_uid()
+CREATE POLICY "Users see own reset requests" ON password_reset_requests FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR profile_id = current_uid()
 );
 
 -- notifications
-CREATE POLICY "Users see own notifications" ON notifications FOR SELECT TO authenticated USING (recipient_id = current_uid());
-CREATE POLICY "Authenticated users can insert notifications" ON notifications FOR INSERT TO authenticated WITH CHECK (TRUE);
-CREATE POLICY "Users can update own notifications" ON notifications FOR UPDATE TO authenticated USING (recipient_id = current_uid());
+CREATE POLICY "Users see own notifications" ON notifications FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  recipient_id = current_uid() OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+);
+CREATE POLICY "Authenticated users can insert notifications" ON notifications FOR INSERT WITH CHECK (TRUE);
+CREATE POLICY "Users can update own notifications" ON notifications FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR recipient_id = current_uid()
+);
 
 -- teams
-CREATE POLICY "teams_select" ON teams FOR SELECT TO authenticated USING (true);
-CREATE POLICY "teams_insert" ON teams FOR INSERT TO authenticated WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "teams_update" ON teams FOR UPDATE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "teams_delete" ON teams FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
+CREATE POLICY "teams_select" ON teams FOR SELECT USING (true);
+CREATE POLICY "teams_insert" ON teams FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+);
+CREATE POLICY "teams_update" ON teams FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+);
+CREATE POLICY "teams_delete" ON teams FOR DELETE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+);
 
 -- team_members
-CREATE POLICY "team_members_select" ON team_members FOR SELECT TO authenticated USING (true);
-CREATE POLICY "team_members_insert" ON team_members FOR INSERT TO authenticated WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "team_members_update" ON team_members FOR UPDATE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "team_members_delete" ON team_members FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
+CREATE POLICY "team_members_select" ON team_members FOR SELECT USING (true);
+CREATE POLICY "team_members_insert" ON team_members FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+);
+CREATE POLICY "team_members_update" ON team_members FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+);
+CREATE POLICY "team_members_delete" ON team_members FOR DELETE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+);
 
--- shift_templates
-CREATE POLICY "shift_templates_select" ON shift_templates FOR SELECT TO authenticated USING (true);
-CREATE POLICY "shift_templates_insert" ON shift_templates FOR INSERT TO authenticated WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "shift_templates_update" ON shift_templates FOR UPDATE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "shift_templates_delete" ON shift_templates FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
+-- shift_templates (write access NOT widened to management — matches live)
+CREATE POLICY "shift_templates_select" ON shift_templates FOR SELECT USING (true);
+CREATE POLICY "shift_templates_insert" ON shift_templates FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
+CREATE POLICY "shift_templates_update" ON shift_templates FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
+CREATE POLICY "shift_templates_delete" ON shift_templates FOR DELETE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
 
--- team_rotations
-CREATE POLICY "team_rotations_select" ON team_rotations FOR SELECT TO authenticated USING (true);
-CREATE POLICY "team_rotations_insert" ON team_rotations FOR INSERT TO authenticated WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "team_rotations_update" ON team_rotations FOR UPDATE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "team_rotations_delete" ON team_rotations FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
+-- team_rotations (write access NOT widened to management — matches live)
+CREATE POLICY "team_rotations_select" ON team_rotations FOR SELECT USING (true);
+CREATE POLICY "team_rotations_insert" ON team_rotations FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
+CREATE POLICY "team_rotations_update" ON team_rotations FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
+CREATE POLICY "team_rotations_delete" ON team_rotations FOR DELETE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
 
--- attendance_records
-CREATE POLICY "attendance_select" ON attendance_records FOR SELECT TO authenticated
-  USING (profile_id = current_uid() OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "attendance_insert" ON attendance_records FOR INSERT TO authenticated
-  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "attendance_update" ON attendance_records FOR UPDATE TO authenticated
-  USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "attendance_delete" ON attendance_records FOR DELETE TO authenticated
-  USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
+-- attendance_records (SELECT widened to management; writes stay admin-only — matches live)
+CREATE POLICY "attendance_select" ON attendance_records FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  profile_id = current_uid() OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+);
+CREATE POLICY "attendance_insert" ON attendance_records FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
+CREATE POLICY "attendance_update" ON attendance_records FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
+CREATE POLICY "attendance_delete" ON attendance_records FOR DELETE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
 
--- roster_overrides
-CREATE POLICY "roster_overrides_select" ON roster_overrides FOR SELECT TO authenticated
-  USING (profile_id = current_uid() OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "roster_overrides_insert" ON roster_overrides FOR INSERT TO authenticated
-  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "roster_overrides_update" ON roster_overrides FOR UPDATE TO authenticated
-  USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "roster_overrides_delete" ON roster_overrides FOR DELETE TO authenticated
-  USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
+-- roster_overrides (SELECT widened to management; writes stay admin-only — matches live)
+CREATE POLICY "roster_overrides_select" ON roster_overrides FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  profile_id = current_uid() OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+);
+CREATE POLICY "roster_overrides_insert" ON roster_overrides FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
+CREATE POLICY "roster_overrides_update" ON roster_overrides FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
+CREATE POLICY "roster_overrides_delete" ON roster_overrides FOR DELETE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
 
--- requests (final, post-team-leaders-schema shape)
-CREATE POLICY "requests_select" ON requests FOR SELECT TO authenticated
-  USING (
-    profile_id = current_uid()
-    OR is_team_leader_for(team_id)
-    OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
-  );
-CREATE POLICY "requests_insert" ON requests FOR INSERT TO authenticated
-  WITH CHECK (profile_id = current_uid());
-CREATE POLICY "requests_update" ON requests FOR UPDATE TO authenticated
-  USING (
-    profile_id = current_uid()
-    OR is_team_leader_for(team_id)
-    OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
-  );
-CREATE POLICY "requests_delete" ON requests FOR DELETE TO authenticated
-  USING (
-    profile_id = current_uid()
-    OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
-  );
+-- requests (final shape incl. management-requests-access widening)
+CREATE POLICY "requests_select" ON requests FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  profile_id = current_uid()
+  OR is_team_leader_for(team_id)
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+  OR (
+    EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+    AND is_submitter_team_leader(profile_id)
+  )
+);
+CREATE POLICY "requests_insert" ON requests FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR profile_id = current_uid()
+);
+CREATE POLICY "requests_update" ON requests FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  profile_id = current_uid()
+  OR is_team_leader_for(team_id)
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+  OR (
+    EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+    AND is_submitter_team_leader(profile_id)
+  )
+);
+CREATE POLICY "requests_delete" ON requests FOR DELETE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  profile_id = current_uid()
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+);
 
--- leave_requests (final, post-team-leaders-schema shape)
-CREATE POLICY "leave_requests_select" ON leave_requests FOR SELECT TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM requests r
-      WHERE r.id = leave_requests.request_id
-        AND (
-          r.profile_id = current_uid()
-          OR is_team_leader_for(r.team_id)
-          OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+-- leave_requests (final shape incl. management-requests-access widening)
+CREATE POLICY "leave_requests_select" ON leave_requests FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM requests r
+    WHERE r.id = leave_requests.request_id
+      AND (
+        r.profile_id = current_uid()
+        OR is_team_leader_for(r.team_id)
+        OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+        OR (
+          EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+          AND is_submitter_team_leader(r.profile_id)
         )
-    )
-  );
-CREATE POLICY "leave_requests_insert" ON leave_requests FOR INSERT TO authenticated
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM requests r
-      WHERE r.id = leave_requests.request_id
-        AND r.profile_id = current_uid()
-    )
-  );
-CREATE POLICY "leave_requests_update" ON leave_requests FOR UPDATE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM requests r
-      WHERE r.id = leave_requests.request_id
-        AND (
-          r.profile_id = current_uid()
-          OR is_team_leader_for(r.team_id)
-          OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+      )
+  )
+);
+CREATE POLICY "leave_requests_insert" ON leave_requests FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM requests r
+    WHERE r.id = leave_requests.request_id
+      AND r.profile_id = current_uid()
+  )
+);
+CREATE POLICY "leave_requests_update" ON leave_requests FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM requests r
+    WHERE r.id = leave_requests.request_id
+      AND (
+        r.profile_id = current_uid()
+        OR is_team_leader_for(r.team_id)
+        OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+        OR (
+          EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+          AND is_submitter_team_leader(r.profile_id)
         )
-    )
-  );
-CREATE POLICY "leave_requests_delete" ON leave_requests FOR DELETE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM requests r
-      WHERE r.id = leave_requests.request_id
-        AND (r.profile_id = current_uid() OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'))
-    )
-  );
+      )
+  )
+);
+CREATE POLICY "leave_requests_delete" ON leave_requests FOR DELETE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM requests r
+    WHERE r.id = leave_requests.request_id
+      AND (r.profile_id = current_uid() OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'))
+  )
+);
 
--- overtime_requests (final, post-team-leaders-schema shape)
-CREATE POLICY "overtime_requests_select" ON overtime_requests FOR SELECT TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM requests r
-      WHERE r.id = overtime_requests.request_id
-        AND (
-          r.profile_id = current_uid()
-          OR is_team_leader_for(r.team_id)
-          OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+-- overtime_requests (final shape incl. management-requests-access widening)
+CREATE POLICY "overtime_requests_select" ON overtime_requests FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM requests r
+    WHERE r.id = overtime_requests.request_id
+      AND (
+        r.profile_id = current_uid()
+        OR is_team_leader_for(r.team_id)
+        OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+        OR (
+          EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+          AND is_submitter_team_leader(r.profile_id)
         )
-    )
-  );
-CREATE POLICY "overtime_requests_insert" ON overtime_requests FOR INSERT TO authenticated
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM requests r
-      WHERE r.id = overtime_requests.request_id
-        AND r.profile_id = current_uid()
-    )
-  );
-CREATE POLICY "overtime_requests_update" ON overtime_requests FOR UPDATE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM requests r
-      WHERE r.id = overtime_requests.request_id
-        AND (
-          r.profile_id = current_uid()
-          OR is_team_leader_for(r.team_id)
-          OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+      )
+  )
+);
+CREATE POLICY "overtime_requests_insert" ON overtime_requests FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM requests r
+    WHERE r.id = overtime_requests.request_id
+      AND r.profile_id = current_uid()
+  )
+);
+CREATE POLICY "overtime_requests_update" ON overtime_requests FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM requests r
+    WHERE r.id = overtime_requests.request_id
+      AND (
+        r.profile_id = current_uid()
+        OR is_team_leader_for(r.team_id)
+        OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+        OR (
+          EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+          AND is_submitter_team_leader(r.profile_id)
         )
-    )
-  );
-CREATE POLICY "overtime_requests_delete" ON overtime_requests FOR DELETE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM requests r
-      WHERE r.id = overtime_requests.request_id
-        AND (r.profile_id = current_uid() OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'))
-    )
-  );
+      )
+  )
+);
+CREATE POLICY "overtime_requests_delete" ON overtime_requests FOR DELETE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM requests r
+    WHERE r.id = overtime_requests.request_id
+      AND (r.profile_id = current_uid() OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'))
+  )
+);
 
--- overtime_entries (final, post-team-leaders-schema shape)
-CREATE POLICY "overtime_entries_select" ON overtime_entries FOR SELECT TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM overtime_requests ot
-      JOIN requests r ON r.id = ot.request_id
-      WHERE ot.id = overtime_entries.overtime_request_id
-        AND (
-          r.profile_id = current_uid()
-          OR is_team_leader_for(r.team_id)
-          OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+-- overtime_entries (final shape incl. management-requests-access widening)
+CREATE POLICY "overtime_entries_select" ON overtime_entries FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM overtime_requests ot
+    JOIN requests r ON r.id = ot.request_id
+    WHERE ot.id = overtime_entries.overtime_request_id
+      AND (
+        r.profile_id = current_uid()
+        OR is_team_leader_for(r.team_id)
+        OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+        OR (
+          EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+          AND is_submitter_team_leader(r.profile_id)
         )
-    )
-  );
-CREATE POLICY "overtime_entries_insert" ON overtime_entries FOR INSERT TO authenticated
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM overtime_requests ot
-      JOIN requests r ON r.id = ot.request_id
-      WHERE ot.id = overtime_entries.overtime_request_id
-        AND r.profile_id = current_uid()
-    )
-  );
-CREATE POLICY "overtime_entries_update" ON overtime_entries FOR UPDATE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM overtime_requests ot
-      JOIN requests r ON r.id = ot.request_id
-      WHERE ot.id = overtime_entries.overtime_request_id
-        AND (
-          r.profile_id = current_uid()
-          OR is_team_leader_for(r.team_id)
-          OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+      )
+  )
+);
+CREATE POLICY "overtime_entries_insert" ON overtime_entries FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM overtime_requests ot
+    JOIN requests r ON r.id = ot.request_id
+    WHERE ot.id = overtime_entries.overtime_request_id
+      AND r.profile_id = current_uid()
+  )
+);
+CREATE POLICY "overtime_entries_update" ON overtime_entries FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM overtime_requests ot
+    JOIN requests r ON r.id = ot.request_id
+    WHERE ot.id = overtime_entries.overtime_request_id
+      AND (
+        r.profile_id = current_uid()
+        OR is_team_leader_for(r.team_id)
+        OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+        OR (
+          EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+          AND is_submitter_team_leader(r.profile_id)
         )
-    )
-  );
-CREATE POLICY "overtime_entries_delete" ON overtime_entries FOR DELETE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM overtime_requests ot
-      JOIN requests r ON r.id = ot.request_id
-      WHERE ot.id = overtime_entries.overtime_request_id
-        AND (r.profile_id = current_uid() OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'))
-    )
-  );
+      )
+  )
+);
+CREATE POLICY "overtime_entries_delete" ON overtime_entries FOR DELETE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (
+    SELECT 1 FROM overtime_requests ot
+    JOIN requests r ON r.id = ot.request_id
+    WHERE ot.id = overtime_entries.overtime_request_id
+      AND (r.profile_id = current_uid() OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'))
+  )
+);
 
 -- team_leaders
-CREATE POLICY "team_leaders_select" ON team_leaders FOR SELECT TO authenticated USING (true);
-CREATE POLICY "team_leaders_insert" ON team_leaders FOR INSERT TO authenticated
-  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "team_leaders_update" ON team_leaders FOR UPDATE TO authenticated
-  USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
-CREATE POLICY "team_leaders_delete" ON team_leaders FOR DELETE TO authenticated
-  USING (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
+CREATE POLICY "team_leaders_select" ON team_leaders FOR SELECT USING (true);
+CREATE POLICY "team_leaders_insert" ON team_leaders FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+);
+CREATE POLICY "team_leaders_update" ON team_leaders FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+);
+CREATE POLICY "team_leaders_delete" ON team_leaders FOR DELETE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('admin', 'management'))
+);
 
--- request_approval_history (append-only: SELECT + INSERT policies only, no UPDATE/DELETE)
-CREATE POLICY "approval_history_select" ON request_approval_history FOR SELECT TO authenticated
-  USING (
-    EXISTS (SELECT 1 FROM requests r WHERE r.id = request_approval_history.request_id AND r.profile_id = current_uid())
-    OR EXISTS (SELECT 1 FROM requests r WHERE r.id = request_approval_history.request_id AND is_team_leader_for(r.team_id))
-    OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
-  );
-CREATE POLICY "approval_history_insert" ON request_approval_history FOR INSERT TO authenticated
-  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin'));
+-- request_approval_history (append-only: SELECT + INSERT policies only.
+-- No UPDATE/DELETE policy exists for this table at all — combined with
+-- FORCE ROW LEVEL SECURITY above, that makes those operations impossible
+-- for every role, including the bypass-flag path. See point 3 in the
+-- header comment.)
+CREATE POLICY "approval_history_select" ON request_approval_history FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM requests r WHERE r.id = request_approval_history.request_id AND r.profile_id = current_uid())
+  OR EXISTS (SELECT 1 FROM requests r WHERE r.id = request_approval_history.request_id AND is_team_leader_for(r.team_id))
+  OR EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+  OR (
+    EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+    AND EXISTS (
+      SELECT 1 FROM requests r
+      WHERE r.id = request_approval_history.request_id
+        AND is_submitter_team_leader(r.profile_id)
+    )
+  )
+);
+CREATE POLICY "approval_history_insert" ON request_approval_history FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+  OR (
+    EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+    AND EXISTS (
+      SELECT 1 FROM requests r
+      WHERE r.id = request_approval_history.request_id
+        AND is_submitter_team_leader(r.profile_id)
+    )
+  )
+);
 
--- ─── Grants ────────────────────────────────────────────────────────────────
--- RLS restricts which ROWS are visible/writable; Postgres still requires a
--- base GRANT for the operation category itself. Supabase provisions this
--- automatically for its `authenticated`/`anon` roles; here it's explicit.
+-- coaching_agent_checkins / coaching_leader_checkins (no DELETE policy —
+-- rows are toggled via upsert, never removed)
+CREATE POLICY "coaching_agent_checkins_select" ON coaching_agent_checkins FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('management', 'admin'))
+);
+CREATE POLICY "coaching_agent_checkins_insert" ON coaching_agent_checkins FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('management', 'admin'))
+);
+CREATE POLICY "coaching_agent_checkins_update" ON coaching_agent_checkins FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('management', 'admin'))
+) WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('management', 'admin'))
+);
 
-GRANT USAGE ON SCHEMA public TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+CREATE POLICY "coaching_leader_checkins_select" ON coaching_leader_checkins FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('management', 'admin'))
+);
+CREATE POLICY "coaching_leader_checkins_insert" ON coaching_leader_checkins FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('management', 'admin'))
+);
+CREATE POLICY "coaching_leader_checkins_update" ON coaching_leader_checkins FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('management', 'admin'))
+) WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role IN ('management', 'admin'))
+);
 
-GRANT USAGE ON SCHEMA public TO service_role;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO service_role;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
-
--- The app's actual Azure Database for PostgreSQL connection role must be
--- granted membership in both roles once known, e.g.:
--- GRANT authenticated, service_role TO <your-admin-username>;
--- (substitute the actual admin username chosen when the Azure Postgres
--- Flexible Server instance is provisioned). Left as a manual step since
--- that role name doesn't exist until the instance is created.
-
--- Belt-and-suspenders on top of RLS (per the plan's "RLS decision"): make the
--- append-only guarantee on request_approval_history hold even if a future
--- policy change is wrong, independent of RLS entirely.
-REVOKE UPDATE, DELETE ON request_approval_history FROM authenticated;
+-- warnings
+CREATE POLICY "warnings_insert" ON warnings FOR INSERT WITH CHECK (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  (
+    issued_by = current_uid()
+    AND (
+      -- Management warning a team leader
+      (
+        EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+        AND is_submitter_team_leader(issued_to)
+      )
+      OR
+      -- Team leader warning one of their own team's agents
+      (
+        EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+        AND is_submitter_team_leader(current_uid())
+        AND issued_to <> current_uid()
+        AND EXISTS (SELECT 1 FROM profiles WHERE id = issued_to AND role = 'agent')
+        AND EXISTS (
+          SELECT 1 FROM team_members tm
+          JOIN team_leaders tl ON tl.team_id = tm.team_id
+          WHERE tl.profile_id = current_uid() AND tm.profile_id = issued_to
+        )
+      )
+      OR
+      -- Plain (non-leading) admin warning any agent, unscoped
+      (
+        EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+        AND NOT is_submitter_team_leader(current_uid())
+        AND EXISTS (SELECT 1 FROM profiles WHERE id = issued_to AND role = 'agent')
+      )
+    )
+  )
+);
+CREATE POLICY "warnings_select" ON warnings FOR SELECT USING (
+  current_setting('app.bypass_rls', true) = 'true' OR
+  EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'management')
+  OR (
+    EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+    AND is_submitter_team_leader(current_uid())
+    AND warnings.issued_to <> current_uid()
+    AND EXISTS (SELECT 1 FROM profiles WHERE id = warnings.issued_to AND role = 'agent')
+    AND EXISTS (
+      SELECT 1 FROM team_members tm
+      JOIN team_leaders tl ON tl.team_id = tm.team_id
+      WHERE tl.profile_id = current_uid() AND tm.profile_id = warnings.issued_to
+    )
+  )
+  OR (
+    EXISTS (SELECT 1 FROM profiles WHERE id = current_uid() AND role = 'admin')
+    AND NOT is_submitter_team_leader(current_uid())
+    AND EXISTS (SELECT 1 FROM profiles WHERE id = warnings.issued_to AND role = 'agent')
+  )
+);
+CREATE POLICY "warnings_update" ON warnings FOR UPDATE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR issued_by = current_uid()
+);
+CREATE POLICY "warnings_delete" ON warnings FOR DELETE USING (
+  current_setting('app.bypass_rls', true) = 'true' OR issued_by = current_uid()
+);
 
 -- ─── Seed data ─────────────────────────────────────────────────────────────
+-- This script itself runs as the plain connecting role with no user context
+-- and no bypass flag set — with FORCE ROW LEVEL SECURITY now active on every
+-- table (see above), it would otherwise be denied by teams_insert /
+-- shift_templates_insert the same as any other unauthenticated caller.
+
+SET LOCAL app.bypass_rls = 'true';
 
 INSERT INTO teams (name, color) VALUES
   ('Green',  'green'),
@@ -809,3 +1224,5 @@ INSERT INTO shift_templates (name, start_time, end_time, work_days) VALUES
   ('Afternoon',  '14:00', '22:00', '{1,2,3,4,5}'),
   ('Night',      '22:00', '06:00', '{1,2,3,4,5}'),
   ('Weekend AM', '07:00', '15:00', '{6,7}');
+
+COMMIT;
